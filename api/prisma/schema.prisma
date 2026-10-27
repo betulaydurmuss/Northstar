@@ -44,11 +44,15 @@ model User {
   role         Role      @default(user)
   // Encrypted with the server key; never sent to the browser.
   totpSecret   String?   @map("totp_secret")
+  totpEnabled  Boolean   @default(false) @map("totp_enabled")
+  // SHA-256 of each unused one-time backup code. A used code is removed from the list.
+  backupCodes  String[]  @map("backup_code_hashes")
   failedLogins Int       @default(0) @map("failed_logins")
   lockedUntil  DateTime? @map("locked_until")
   createdAt    DateTime  @default(now()) @map("created_at")
 
   sessions             Session[]
+  passwordResets       PasswordResetToken[]
   monitors             Monitor[]
   notificationChannels NotificationChannel[]
   auditLogs            AuditLog[]
@@ -57,21 +61,38 @@ model User {
 }
 
 model Session {
-  id               String    @id @default(uuid()) @db.Uuid
-  userId           String    @map("user_id") @db.Uuid
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
   // Only a hash is stored, so a database leak does not hand out live sessions.
-  refreshTokenHash String    @unique @map("refresh_token_hash")
-  ip               String?
-  userAgent        String?   @map("user_agent")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  lastUsedAt       DateTime  @default(now()) @map("last_used_at")
-  expiresAt        DateTime  @map("expires_at")
-  revokedAt        DateTime? @map("revoked_at")
+  refreshTokenHash  String    @unique @map("refresh_token_hash")
+  // The token this one replaced. Seeing it again means a stolen token is being replayed.
+  previousTokenHash String?   @unique @map("previous_token_hash")
+  // True once the second factor was checked, or when the account has none.
+  mfaVerified       Boolean   @default(false) @map("mfa_verified")
+  ip                String?
+  userAgent         String?   @map("user_agent")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  lastUsedAt        DateTime  @default(now()) @map("last_used_at")
+  expiresAt         DateTime  @map("expires_at")
+  revokedAt         DateTime? @map("revoked_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("sessions")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_reset_tokens")
 }
 
 model Monitor {
