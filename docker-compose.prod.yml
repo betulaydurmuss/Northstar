@@ -1,0 +1,93 @@
+# Production on a single server:
+#   cp .env.example .env    # then set the values marked "production" below
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Only Caddy is published to the internet. Postgres and Redis stay on the private
+# network between the containers.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: northstar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: northstar
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U northstar']
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis-data:/data
+
+  api:
+    build: { context: ., target: api }
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://northstar:${POSTGRES_PASSWORD}@postgres:5432/northstar
+      REDIS_URL: redis://redis:6379
+      # Caddy is the one proxy in front of the api.
+      TRUST_PROXY: 1
+    volumes:
+      - storage:/data
+    # Healthy once migrations have run and the server answers, which is what the
+    # worker and Caddy wait for.
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:4000/api/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+
+  worker:
+    build: { context: ., target: worker }
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://northstar:${POSTGRES_PASSWORD}@postgres:5432/northstar
+      REDIS_URL: redis://redis:6379
+    # Report logos and PDFs live here, shared with the api.
+    volumes:
+      - storage:/data
+    depends_on:
+      api: { condition: service_healthy }
+
+  web:
+    build:
+      context: .
+      target: web
+      args:
+        VITE_APP_HOSTS: ${NORTHSTAR_DOMAIN}
+    restart: unless-stopped
+    environment:
+      NORTHSTAR_DOMAIN: ${NORTHSTAR_DOMAIN:?set NORTHSTAR_DOMAIN in .env}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - caddy-data:/data
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  postgres-data:
+  redis-data:
+  storage:
+  caddy-data:

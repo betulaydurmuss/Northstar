@@ -1,0 +1,22 @@
+# One host serves both halves, so the browser talks to a single origin and the
+# SameSite=Strict refresh cookie works. Caddy obtains the TLS certificate itself.
+{$NORTHSTAR_DOMAIN:localhost} {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy api:4000
+	}
+
+	handle {
+		root * /srv
+		# Hashed assets never change; the HTML shell always is checked again.
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		try_files {path} /index.html
+		file_server
+	}
+
+	# Client status page domains (status.client.com) need a site block of their own, or
+	# Caddy on-demand TLS with an "ask" endpoint; neither is set up here. The api and the
+	# web app already handle such hosts once requests reach them.
+}

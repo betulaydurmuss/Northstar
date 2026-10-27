@@ -1,0 +1,17 @@
+# Rebuilt inside the image, so local copies would only slow the build down.
+**/node_modules
+**/dist
+**/coverage
+
+# Secrets and runtime data never go into an image.
+.env
+.env.*
+!.env.example
+api/storage
+
+# Not needed to build or run anything.
+.git
+.github
+docs
+*.md
+*.pdf
