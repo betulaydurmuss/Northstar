@@ -26,7 +26,10 @@ export function incidentsRouter() {
         ...(q.status === 'ongoing' ? { resolvedAt: null } : {}),
         ...(q.status === 'resolved' ? { resolvedAt: { not: null } } : {}),
       },
-      include: { monitor: { select: { id: true, name: true } } },
+      include: {
+        monitor: { select: { id: true, name: true } },
+        updates: { orderBy: { createdAt: 'desc' } },
+      },
       orderBy: { startedAt: 'desc' },
       take: q.limit,
     });
@@ -39,6 +42,12 @@ export function incidentsRouter() {
         startedAt: i.startedAt,
         resolvedAt: i.resolvedAt,
         cause: i.cause,
+        updates: i.updates.map((u) => ({
+          id: u.id,
+          status: u.status,
+          message: u.message,
+          createdAt: u.createdAt,
+        })),
         durationMs: (i.resolvedAt?.getTime() ?? now) - i.startedAt.getTime(),
       })),
     );

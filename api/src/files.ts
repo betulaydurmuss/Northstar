@@ -9,7 +9,11 @@ import { HttpError } from './http.js';
 // cannot be guessed from a client id, and they are served with headers that stop an
 // uploaded SVG from ever running script.
 
-export const LOGO_DIR = fileURLToPath(new URL('../storage/logos/', import.meta.url));
+// api/storage by default; STORAGE_DIR moves it (the worker writes reports to the same place).
+export const STORAGE_DIR =
+  process.env.STORAGE_DIR ?? fileURLToPath(new URL('../storage/', import.meta.url));
+export const LOGO_DIR = join(STORAGE_DIR, 'logos');
+export const REPORTS_DIR = join(STORAGE_DIR, 'reports');
 export const MAX_LOGO_BYTES = 1024 * 1024;
 const NAME = /^[0-9a-f-]{36}-[A-Za-z0-9_-]{16}\.(png|jpg|svg)$/;
 
