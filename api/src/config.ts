@@ -11,6 +11,19 @@ const schema = z.object({
     .min(1)
     .default('postgresql://northstar:northstar@localhost:5432/northstar'),
   REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
+
+  // Signs access tokens. At least 32 random characters.
+  JWT_SECRET: z.string().min(32),
+  // 32 bytes, base64. Encrypts TOTP secrets and notification settings at rest.
+  ENCRYPTION_KEY: z
+    .string()
+    .refine((v) => Buffer.from(v, 'base64').length === 32, 'must be 32 bytes in base64'),
+  // How many proxies sit in front of the api, so req.ip is the visitor and not the proxy.
+  TRUST_PROXY: z.coerce.number().int().min(0).default(0),
+
+  SMTP_HOST: z.string().default('localhost'),
+  SMTP_PORT: z.coerce.number().int().positive().default(1025),
+  MAIL_FROM: z.string().default('Northstar <alerts@northstar.local>'),
 });
 
 export type Config = z.infer<typeof schema>;
