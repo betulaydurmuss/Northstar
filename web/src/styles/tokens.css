@@ -1,0 +1,41 @@
+/* Every colour in the product comes from here. Indigo is the only accent;
+   status colours are reserved for status and never used as decoration. */
+:root {
+  --bg: #0b0c14;
+  --surface: #11131d;
+  --raised: #181b28;
+  --line: #252a3b;
+  --line-strong: #343a50;
+  --text: #e7e9f3;
+  --muted: #8a90a8;
+  --faint: #5c6280;
+
+  --accent: #818cf8;
+  --accent-strong: #a5adfb;
+  --accent-ink: #0b0c14;
+  --accent-soft: rgb(129 140 248 / 0.12);
+
+  --good: #34d399;
+  --bad: #f87171;
+  --warn: #fbbf24;
+  --info: #38bdf8;
+
+  --font-sans: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
+  --text-3xl: 40px;
+
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+
+  --content: 1120px;
+  --sidebar: 232px;
+  --topbar: 56px;
+}
