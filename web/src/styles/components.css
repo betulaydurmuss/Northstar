@@ -171,3 +171,140 @@
 .table tr:last-child td {
   border-bottom: 0;
 }
+.table-link {
+  cursor: pointer;
+}
+.table-link:hover td {
+  background: color-mix(in srgb, var(--raised) 60%, transparent);
+}
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Stat tiles: a label, one number, an optional line of context. */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+.tile {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  align-content: start;
+}
+.tile-label {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.tile-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xl);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.tile-hint {
+  font-size: var(--text-xs);
+  color: var(--faint);
+}
+
+/* Segmented control for ranges and filters. */
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.segmented button {
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+.segmented button:hover {
+  color: var(--text);
+}
+.segmented button.is-active {
+  background: var(--raised);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+/* Filter row: one line above the content it scopes. */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.filters .input {
+  height: 34px;
+}
+
+/* Uptime bar: one cell per period with a 2px gap of surface between them. */
+.uptime-bar {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  min-width: 120px;
+}
+.uptime-cell {
+  flex: 1;
+  min-width: 2px;
+  border-radius: 2px;
+  transition: opacity 0.1s;
+}
+.uptime-up {
+  background: var(--good);
+}
+.uptime-down {
+  background: var(--bad);
+}
+.uptime-partial {
+  background: var(--warn);
+}
+.uptime-empty {
+  background: var(--line);
+}
+.uptime-bar:hover .uptime-cell:not(.is-hover) {
+  opacity: 0.55;
+}
+.uptime-tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%);
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Chart tooltip: the value leads, context follows. */
+.chart-tooltip {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--raised);
+  font-size: var(--text-xs);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.35);
+}
+.chart-tooltip strong {
+  font-size: var(--text-md);
+  color: var(--text);
+}
+.chart-refreshing {
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}

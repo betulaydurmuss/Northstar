@@ -12,12 +12,14 @@ const LABELS: Record<Status, { text: string; Icon: typeof Check }> = {
   pending: { text: 'Pending', Icon: Circle },
 };
 
-export function StatusBadge({ status }: { status: Status }) {
+// `label` replaces the word when the state means something more specific in context,
+// such as "Resolved" for an incident; the colour and icon stay those of the state.
+export function StatusBadge({ status, label }: { status: Status; label?: string }) {
   const { text, Icon } = LABELS[status];
   return (
     <span className={`badge badge-${status}`}>
       <Icon size={13} strokeWidth={2.5} aria-hidden="true" />
-      {text}
+      {label ?? text}
     </span>
   );
 }
