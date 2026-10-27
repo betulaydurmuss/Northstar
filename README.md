@@ -304,19 +304,6 @@ curl -s https://status.example.com/api/public/status/harbor-and-pine | jq '{stat
 }
 ```
 
-## Roadmap
-
-| Stage | Work                                                                          |
-| ----- | ----------------------------------------------------------------------------- |
-| Done  | Secure sign-in, monitoring engine, dashboard, clients and imports             |
-| Done  | Certificate and domain expiry, keyword monitors, status pages, SLA reports    |
-| Done  | Client sign-in, maintenance windows, admin panel, audit log, plan limits      |
-| Next  | A public deployment and live demo                                             |
-| Next  | Checks from more than one region, so one network's trouble is not an outage   |
-| Next  | Slack, Microsoft Teams and webhook alerts, routed per client                  |
-| Later | TLS on demand for client status domains, and status page subscriptions        |
-| Later | Verified email at sign-up, and lockouts that cannot be triggered by strangers |
-
 ## License
 
 MIT. See [LICENSE](LICENSE).
