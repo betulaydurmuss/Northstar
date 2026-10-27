@@ -1,4 +1,4 @@
-import { LayoutGrid, LogOut, ShieldCheck } from 'lucide-react';
+import { Activity, LayoutGrid, LogOut, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { Logo } from '../components/Logo';
@@ -31,6 +31,9 @@ export function AppShell() {
           <nav className="nav">
             <NavLink to="/" end>
               <LayoutGrid size={16} /> Overview
+            </NavLink>
+            <NavLink to="/incidents">
+              <Activity size={16} /> Incidents
             </NavLink>
           </nav>
         </div>
