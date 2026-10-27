@@ -4,13 +4,16 @@ import { ArrowDown, ArrowLeft, ArrowUp, ExternalLink } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ErrorState, Skeleton } from '../../components/States';
+import { StatusBadge } from '../../components/StatusBadge';
 import { StatusView, type PublicStatus } from '../../components/StatusView';
 import { api, ApiError } from '../../lib/api';
 import { useClient } from '../../lib/clients';
 
 type Selection = { monitorId: string; displayName: string; groupName: string };
 type SavedPage = {
+  id: string;
   slug: string;
+  domainVerifiedAt: string | null;
   title: string;
   isPublic: boolean;
   customDomain: string | null;
@@ -25,6 +28,45 @@ const slugify = (s: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 60);
+
+// Before a custom domain is served, the agency proves it controls it with a TXT record.
+function DomainProof({ page, clientId }: { page: SavedPage; clientId: string }) {
+  const qc = useQueryClient();
+  const verify = useMutation({
+    mutationFn: () => api(`/status-pages/by-client/${clientId}/verify-domain`, { method: 'POST' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['status-page', clientId] }),
+  });
+  if (page.domainVerifiedAt) {
+    return <StatusBadge status="up" label="Domain verified" />;
+  }
+  return (
+    <div
+      className="card card-raised stack"
+      style={{ padding: 12, gap: 8, fontSize: 'var(--text-xs)' }}
+    >
+      <span>
+        To prove the domain is yours, also add a <code>TXT</code> record at{' '}
+        <code>_northstar.{page.customDomain}</code> with the value:
+      </span>
+      <code style={{ wordBreak: 'break-all' }}>northstar-verify={page.id}</code>
+      <div className="row">
+        <button
+          type="button"
+          className="btn"
+          onClick={() => verify.mutate()}
+          disabled={verify.isPending}
+        >
+          {verify.isPending ? 'Checking DNS…' : 'Verify domain'}
+        </button>
+      </div>
+      {verify.isError && (
+        <span className="field-error">
+          {verify.error instanceof ApiError ? verify.error.message : 'Could not check DNS'}
+        </span>
+      )}
+    </div>
+  );
+}
 
 export function StatusPageEditor() {
   const { id = '' } = useParams();
@@ -312,9 +354,11 @@ export function StatusPageEditor() {
             {customDomain && (
               <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
                 At the domain&apos;s DNS provider, add a <code>CNAME</code> record from{' '}
-                <code>{customDomain}</code> to <code>{window.location.hostname}</code>. The page
-                appears there once the record has spread, usually within an hour.
+                <code>{customDomain}</code> to <code>{window.location.hostname}</code>.
               </span>
+            )}
+            {saved.data?.customDomain && saved.data.customDomain === customDomain && (
+              <DomainProof page={saved.data} clientId={id} />
             )}
           </div>
 

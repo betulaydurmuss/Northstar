@@ -1,7 +1,18 @@
 import { writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import request from 'supertest';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// DNS answers for the custom-domain test, keyed by name.
+const txtRecords = new Map<string, string[][]>();
+vi.mock('node:dns/promises', async (original) => ({
+  ...(await original<typeof import('node:dns/promises')>()),
+  resolveTxt: async (name: string) => {
+    const records = txtRecords.get(name);
+    if (!records) throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' });
+    return records;
+  },
+}));
 import { createApp } from '../src/app.js';
 import { prisma } from '../src/db.js';
 import { REPORTS_DIR } from '../src/files.js';
@@ -162,13 +173,34 @@ describe('public status page', () => {
     expect((await request(app).get('/api/public/status/nobody')).status).toBe(404);
   });
 
-  it('is found by its custom domain', async () => {
-    await publish(harbor.client, harbor.monitor, 'harbor-pine', {
+  it('serves a custom domain only after its TXT record proves ownership', async () => {
+    const saved = await publish(harbor.client, harbor.monitor, 'harbor-pine', {
       customDomain: 'status.harborpine.coffee',
     });
-    const res = await request(app).get('/api/public/status-host/status.harborpine.coffee');
-    expect(res.status).toBe(200);
-    expect(res.body.slug).toBe('harbor-pine');
+    const byHost = () => request(app).get('/api/public/status-host/status.harborpine.coffee');
+    expect((await byHost()).status).toBe(404);
+
+    txtRecords.set('_northstar.status.harborpine.coffee', [['northstar-verify=someone-else']]);
+    const wrong = await post(app, `/api/status-pages/by-client/${harbor.client}/verify-domain`).set(
+      'Authorization',
+      agency,
+    );
+    expect(wrong.status).toBe(400);
+
+    txtRecords.set('_northstar.status.harborpine.coffee', [[`northstar-verify=${saved.body.id}`]]);
+    const right = await post(app, `/api/status-pages/by-client/${harbor.client}/verify-domain`).set(
+      'Authorization',
+      agency,
+    );
+    expect(right.status).toBe(200);
+    expect((await byHost()).body.slug).toBe('harbor-pine');
+
+    // Changing the domain throws the proof away.
+    await publish(harbor.client, harbor.monitor, 'harbor-pine', {
+      customDomain: 'status.other.coffee',
+    });
+    const page = await prisma.statusPage.findUniqueOrThrow({ where: { id: saved.body.id } });
+    expect(page.domainVerifiedAt).toBeNull();
   });
 
   it("cannot show another client's monitor", async () => {
@@ -203,6 +235,14 @@ describe('reports', () => {
     const pdf = await request(app).get(`/api/reports/${created.body.id}/pdf`).set(H(viewerA));
     expect(pdf.status).toBe(200);
     expect(pdf.headers['content-disposition']).toContain('2026-09-uptime-report.pdf');
+  });
+
+  it('does not queue a second render while one is in progress', async () => {
+    const body = { clientId: harbor.client, period: '2026-09' };
+    const first = await post(app, '/api/reports').set('Authorization', agency).send(body);
+    const second = await post(app, '/api/reports').set('Authorization', agency).send(body);
+    expect(second.body.id).toBe(first.body.id);
+    expect(queued).toHaveLength(1);
   });
 
   it('refuses a month that has not started', async () => {

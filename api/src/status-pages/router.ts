@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { resolveTxt } from 'node:dns/promises';
 import { Router, type Request } from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
@@ -7,6 +8,8 @@ import { prisma } from '../db.js';
 import { HttpError } from '../http.js';
 import { requireAgency, scopedClients } from '../tenancy.js';
 import { buildPublicStatus, type PublicStatus } from './public.js';
+
+export const domainToken = (pageId: string) => `northstar-verify=${pageId}`;
 
 const SLUG = /^[a-z0-9](?:[a-z0-9-]{1,58}[a-z0-9])$/;
 const HOST = /^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
@@ -44,12 +47,17 @@ const CACHE_MS = 30_000;
 const cache = new Map<string, { at: number; body: PublicStatus }>();
 export const clearStatusCache = () => cache.clear();
 
-async function publicPage(where: Prisma.StatusPageWhereUniqueInput) {
+async function publicPage(where: Prisma.StatusPageWhereUniqueInput, byHost = false) {
   const page = await prisma.statusPage.findUnique({
     where,
     include: { monitors: { orderBy: { position: 'asc' } } },
   });
   if (!page || !page.isPublic) throw new HttpError(404, 'This status page does not exist');
+  // A custom domain only works once its owner has proved control of it with a TXT record;
+  // otherwise any agency could claim a domain before its real owner points it at us.
+  if (byHost && !page.domainVerifiedAt) {
+    throw new HttpError(404, 'This status page does not exist');
+  }
   const key = page.id;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.body;
@@ -78,7 +86,7 @@ export function publicRouter() {
   // For status.client.com: the web app asks which page belongs to the host it was served on.
   router.get('/status-host/:host', async (req, res) => {
     res.set('Cache-Control', 'public, max-age=30');
-    res.json(await publicPage({ customDomain: String(req.params.host).toLowerCase() }));
+    res.json(await publicPage({ customDomain: String(req.params.host).toLowerCase() }, true));
   });
 
   return router;
@@ -124,6 +132,27 @@ export function statusPagesRouter() {
     res.json({ ...preview, monitorIds: monitors.map((m) => m.id) });
   });
 
+  // Looks for TXT "northstar-verify=<page id>" at _northstar.<domain>.
+  router.post('/by-client/:clientId/verify-domain', requireAgency, async (req, res) => {
+    const client = await findClient(req);
+    const page = await prisma.statusPage.findUnique({ where: { clientId: client.id } });
+    if (!page?.customDomain) throw new HttpError(400, 'Save a custom domain first');
+    const expected = domainToken(page.id);
+    const records = await resolveTxt(`_northstar.${page.customDomain}`).catch(() => []);
+    if (!records.some((parts) => parts.join('').trim() === expected)) {
+      throw new HttpError(
+        400,
+        `No matching TXT record yet. Add "${expected}" at _northstar.${page.customDomain}; DNS changes can take up to an hour.`,
+      );
+    }
+    const verified = await prisma.statusPage.update({
+      where: { id: page.id },
+      data: { domainVerifiedAt: new Date() },
+    });
+    clearStatusCache();
+    res.json(verified);
+  });
+
   router.put('/by-client/:clientId', requireAgency, async (req, res) => {
     const client = await findClient(req);
     const input = pageInput.parse(req.body);
@@ -134,11 +163,14 @@ export function statusPagesRouter() {
       throw new HttpError(400, "A status page can only show this client's own monitors");
     }
 
+    const previous = await prisma.statusPage.findUnique({ where: { clientId: client.id } });
     const data = {
       title: input.title,
       slug: input.slug,
       isPublic: input.isPublic,
       customDomain: input.customDomain,
+      // A new domain has to be proved again.
+      ...(previous?.customDomain !== input.customDomain ? { domainVerifiedAt: null } : {}),
     };
     try {
       const page = await prisma.$transaction(async (tx) => {
