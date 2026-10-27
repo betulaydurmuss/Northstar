@@ -5,6 +5,7 @@ import { ForgotPassword } from '../pages/auth/ForgotPassword';
 import { ResetPassword } from '../pages/auth/ResetPassword';
 import { SignIn } from '../pages/auth/SignIn';
 import { SignUp } from '../pages/auth/SignUp';
+import { EditMonitor, NewMonitor } from '../pages/monitors/MonitorForm';
 import { Overview } from '../pages/Overview';
 import { Security } from '../pages/settings/Security';
 import { Styleguide } from '../pages/Styleguide';
@@ -30,6 +31,10 @@ export const router = createBrowserRouter([
         element: <AppShell />,
         children: [
           { path: '/', element: <Overview /> },
+          { path: '/monitors/new', element: <NewMonitor /> },
+          { path: '/monitors/:id/edit', element: <EditMonitor /> },
+          // Alert emails link here; it becomes the monitor's detail page with the charts.
+          { path: '/monitors/:id', element: <EditMonitor /> },
           { path: '/settings/security', element: <Security /> },
         ],
       },
