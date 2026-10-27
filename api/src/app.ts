@@ -8,6 +8,7 @@ import { defaultAuthLimits, type AuthLimits } from './auth/rate-limit.js';
 import { config } from './config.js';
 import { healthRouter } from './health.js';
 import { errorHandler, HttpError } from './http.js';
+import { incidentsRouter } from './incidents/router.js';
 import { monitorsRouter } from './monitors/router.js';
 import { bullScheduler, type CheckScheduler } from './monitors/scheduler.js';
 
@@ -38,6 +39,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api', csrfGuard);
   app.use('/api/auth', authRouter(options.authLimits ?? defaultAuthLimits));
   app.use('/api/monitors', monitorsRouter(options.scheduler ?? bullScheduler(config.REDIS_URL)));
+  app.use('/api/incidents', incidentsRouter());
   app.use('/api/admin', adminRouter());
 
   app.use('/api', (_req, res) => {
