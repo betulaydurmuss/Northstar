@@ -1,13 +1,26 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { api, ApiError } from '../../lib/api';
 import { AuthLayout } from './AuthLayout';
 
 export function ForgotPassword() {
   const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  function onSubmit(e: FormEvent<HTMLFormElement>) {
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setSent(true);
+    const form = new FormData(e.currentTarget);
+    setBusy(true);
+    setError(null);
+    try {
+      await api('/auth/forgot-password', { method: 'POST', body: { email: form.get('email') } });
+      setSent(true);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not reach Northstar. Try again.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -31,7 +44,12 @@ export function ForgotPassword() {
               required
             />
           </div>
-          <button className="btn btn-primary btn-block" type="submit">
+          {error && (
+            <div className="notice notice-error" role="alert">
+              {error}
+            </div>
+          )}
+          <button className="btn btn-primary btn-block" type="submit" disabled={busy}>
             Send reset link
           </button>
         </form>

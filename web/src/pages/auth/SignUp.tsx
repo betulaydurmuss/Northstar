@@ -1,13 +1,34 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { api, ApiError } from '../../lib/api';
+import { useCompleteSignIn } from '../../lib/auth';
 import { AuthLayout } from './AuthLayout';
 
 export function SignUp() {
+  const completeSignIn = useCompleteSignIn();
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  function onSubmit(e: FormEvent<HTMLFormElement>) {
+  async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setError('Sign-up is not available yet.');
+    const form = new FormData(e.currentTarget);
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api<{ accessToken: string }>('/auth/register', {
+        method: 'POST',
+        body: {
+          name: form.get('name'),
+          email: form.get('email'),
+          password: form.get('password'),
+        },
+      });
+      await completeSignIn(res.accessToken);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not reach Northstar. Try again.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -48,7 +69,7 @@ export function SignUp() {
             required
           />
           <span className="muted" style={{ fontSize: 'var(--text-xs)' }}>
-            At least 12 characters.
+            At least 12 characters. A short sentence works well.
           </span>
         </div>
         {error && (
@@ -56,8 +77,8 @@ export function SignUp() {
             {error}
           </div>
         )}
-        <button className="btn btn-primary btn-block" type="submit">
-          Create account
+        <button className="btn btn-primary btn-block" type="submit" disabled={busy}>
+          {busy ? 'Creating account…' : 'Create account'}
         </button>
       </form>
     </AuthLayout>

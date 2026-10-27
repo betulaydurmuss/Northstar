@@ -15,13 +15,30 @@ export class ApiError extends Error {
 let accessToken: string | null = null;
 let refreshing: Promise<boolean> | null = null;
 
+// The api refuses state-changing requests without this header (its CSRF defence).
+const CSRF = { 'X-Requested-With': 'northstar' };
+
+// Endpoints used while signed out: a 401 from these is an answer, not an expired token.
+const SIGNED_OUT_PATHS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/refresh',
+  '/auth/2fa/verify',
+  '/auth/forgot-password',
+  '/auth/reset-password',
+];
+
 export function setAccessToken(token: string | null) {
   accessToken = token;
 }
 
 async function refresh(): Promise<boolean> {
   // Several requests can expire at the same moment; they all wait on one refresh.
-  refreshing ??= fetch('/api/auth/refresh', { method: 'POST', credentials: 'same-origin' })
+  refreshing ??= fetch('/api/auth/refresh', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: CSRF,
+  })
     .then(async (res) => {
       if (!res.ok) return false;
       const body = (await res.json()) as { accessToken: string };
@@ -39,6 +56,7 @@ type Options = Omit<RequestInit, 'body'> & { body?: unknown };
 
 export async function api<T>(path: string, options: Options = {}, retried = false): Promise<T> {
   const headers = new Headers(options.headers);
+  headers.set('X-Requested-With', CSRF['X-Requested-With']);
   if (options.body !== undefined && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
@@ -56,7 +74,7 @@ export async function api<T>(path: string, options: Options = {}, retried = fals
           : JSON.stringify(options.body),
   });
 
-  if (res.status === 401 && !retried && !path.startsWith('/auth/')) {
+  if (res.status === 401 && !retried && !SIGNED_OUT_PATHS.includes(path)) {
     if (await refresh()) return api<T>(path, options, true);
   }
 
