@@ -308,3 +308,61 @@
   opacity: 0.6;
   transition: opacity 0.2s;
 }
+
+/* Client cards */
+.client-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+.client-card {
+  transition: border-color 0.15s;
+}
+.client-card:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+/* Three-step wizard header */
+.steps {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  list-style: none;
+  padding: 0;
+  flex-wrap: wrap;
+}
+.steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--faint);
+  font-size: var(--text-sm);
+}
+.steps li + li::before {
+  content: '';
+  width: 24px;
+  height: 1px;
+  background: var(--line-strong);
+}
+.steps .step-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  display: grid;
+  place-items: center;
+  font-size: var(--text-xs);
+}
+.steps li.is-current {
+  color: var(--text);
+}
+.steps li.is-current .step-num {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.steps li.is-done .step-num {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}

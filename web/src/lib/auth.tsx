@@ -10,6 +10,11 @@ export type Me = {
   twoFactorEnabled: boolean;
   // An admin who has signed in but not yet enrolled a second factor.
   twoFactorSetupRequired: boolean;
+  membership: {
+    role: 'agency_admin' | 'client_viewer';
+    organization: { id: string; name: string };
+    client: { id: string; name: string } | null;
+  } | null;
 };
 
 export const SECURITY_PATH = '/settings/security';
@@ -38,6 +43,11 @@ export function useCompleteSignIn() {
     const from = (location.state as { from?: string } | null)?.from;
     navigate(me.twoFactorSetupRequired ? SECURITY_PATH : (from ?? '/'), { replace: true });
   };
+}
+
+// Client viewers can look at everything they are shown but change nothing.
+export function useIsAgency() {
+  return useMe().data?.membership?.role === 'agency_admin';
 }
 
 export function useSignOut() {
