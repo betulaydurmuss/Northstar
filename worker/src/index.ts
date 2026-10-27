@@ -1,5 +1,6 @@
 import {
   CHECKS_QUEUE,
+  MAINTENANCE_QUEUE,
   NOTIFICATIONS_QUEUE,
   schedulerId,
   type CheckJob,
@@ -12,6 +13,7 @@ import { prisma } from './db.js';
 import { sendIncidentEmail } from './notify/email.js';
 import { recordOutcome } from './record.js';
 import { createRedis } from './redis.js';
+import { rollUpOldChecks } from './rollup.js';
 import { syncSchedulers } from './scheduler.js';
 
 const connection = createRedis();
@@ -48,7 +50,25 @@ const notifyWorker = new Worker<NotificationJob>(
   { connection },
 );
 
-for (const w of [checkWorker, notifyWorker]) {
+const maintenance = new Queue(MAINTENANCE_QUEUE, { connection });
+const maintenanceWorker = new Worker(
+  MAINTENANCE_QUEUE,
+  async (job) => {
+    if (job.name === 'rollup') {
+      const { hours, deleted } = await rollUpOldChecks();
+      console.log(`rollup: ${deleted} checks folded into ${hours} hourly rows`);
+    }
+  },
+  { connection },
+);
+// 03:00 UTC, the quietest hour for most of our customers.
+await maintenance.upsertJobScheduler(
+  'nightly-rollup',
+  { pattern: '0 3 * * *', tz: 'UTC' },
+  { name: 'rollup', opts: { removeOnComplete: true, removeOnFail: 50 } },
+);
+
+for (const w of [checkWorker, notifyWorker, maintenanceWorker]) {
   w.on('failed', (job, err) => console.error(`${w.name} job ${job?.id} failed: ${err.message}`));
 }
 
@@ -61,8 +81,8 @@ if (config.ALLOW_PRIVATE_TARGETS) {
 }
 
 async function shutdown() {
-  await Promise.all([checkWorker.close(), notifyWorker.close()]);
-  await Promise.all([checks.close(), notifications.close()]);
+  await Promise.all([checkWorker.close(), notifyWorker.close(), maintenanceWorker.close()]);
+  await Promise.all([checks.close(), notifications.close(), maintenance.close()]);
   await prisma.$disconnect();
   connection.disconnect();
   process.exit(0);
