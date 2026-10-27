@@ -1,7 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
 
-// Raw checks are kept for seven days; older history lives in check_results_hourly. Every
+// Raw checks are kept for seven days; older history lives in check_results_hourly.
+// Checks taken during planned maintenance are left out of every figure. Every
 // figure below reads both, so a 30-day number covers 30 days whether or not the nightly
 // rollup has run yet. Uptime is exact either way. Averages are weighted by sample count.
 // Percentiles over rolled-up hours use each hour's p95, which is an approximation.
@@ -29,7 +30,7 @@ function samples(monitorId: string, from: Date) {
            (response_ms IS NOT NULL)::int AS ms_count,
            response_ms::float8 AS p95
       FROM check_results
-     WHERE monitor_id = ${monitorId}::uuid AND checked_at >= ${from}
+     WHERE monitor_id = ${monitorId}::uuid AND checked_at >= ${from} AND NOT maintenance
     UNION ALL
     SELECT hour, up_count, total_count, avg_ms * ms_count, ms_count, p95_ms
       FROM check_results_hourly
@@ -108,7 +109,7 @@ export async function last24Hours(monitorIds: string[]) {
     SELECT monitor_id, date_trunc('hour', checked_at) AS h,
            count(*) FILTER (WHERE status = 'up') AS up, count(*) AS total
       FROM check_results
-     WHERE monitor_id = ANY(${monitorIds}::uuid[]) AND checked_at >= ${start}
+     WHERE monitor_id = ANY(${monitorIds}::uuid[]) AND checked_at >= ${start} AND NOT maintenance
      GROUP BY 1, 2`;
 
   for (const id of monitorIds) {

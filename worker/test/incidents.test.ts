@@ -58,3 +58,23 @@ describe('transition', () => {
     expect(alerts).toEqual(['down', 'up', 'down', 'up']);
   });
 });
+
+describe('planned maintenance', () => {
+  it('never alerts during a window, whatever the check finds', () => {
+    expect(transition('up', 'down', true)).toEqual({
+      next: 'maintenance',
+      openIncident: false,
+      closeIncident: false,
+      notify: null,
+    });
+  });
+
+  it('quietly ends an outage that was open when the window began', () => {
+    expect(transition('down', 'down', true)).toMatchObject({ closeIncident: true, notify: null });
+  });
+
+  it('starts fresh after the window: a failure alerts, a success does not', () => {
+    expect(transition('maintenance', 'down')).toMatchObject({ openIncident: true, notify: 'down' });
+    expect(transition('maintenance', 'up')).toMatchObject({ notify: null, closeIncident: false });
+  });
+});

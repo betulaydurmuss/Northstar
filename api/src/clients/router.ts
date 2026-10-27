@@ -56,7 +56,7 @@ async function clientSummaries(organizationId: string, clientIds: string[]) {
             FROM monitors m
             JOIN (
               SELECT monitor_id, (status = 'up')::int AS up, 1 AS total
-                FROM check_results WHERE checked_at >= ${since}
+                FROM check_results WHERE checked_at >= ${since} AND NOT maintenance
               UNION ALL
               SELECT monitor_id, up_count, total_count
                 FROM check_results_hourly WHERE hour >= ${since}

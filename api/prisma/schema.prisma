@@ -47,6 +47,22 @@ enum MonitorState {
   up
   down
   paused
+  // Inside a planned maintenance window: checks run, nobody is alerted.
+  maintenance
+}
+
+// The public wording of an incident, as on most status pages.
+enum IncidentUpdateStatus {
+  investigating
+  identified
+  monitoring
+  resolved
+}
+
+enum ReportStatus {
+  queued
+  ready
+  failed
 }
 
 enum CheckStatus {
@@ -147,10 +163,14 @@ model Client {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   monitors     Monitor[]
   memberships  Membership[]
   domains      Domain[]
+  statusPage   StatusPage?
+  maintenance  MaintenanceWindow[]
+  reports      Report[]
+  invites      Invite[]
 
   @@unique([organizationId, name])
   @@map("clients")
@@ -195,13 +215,14 @@ model Monitor {
   createdAt            DateTime     @default(now()) @map("created_at")
   updatedAt            DateTime     @updatedAt @map("updated_at")
 
-  owner        User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client       Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  owner        User                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
   checks       CheckResult[]
   hourly       CheckHourly[]
   incidents    Incident[]
   certificate  Certificate?
+  statusPages  StatusPageMonitor[]
 
   @@index([ownerId])
   @@index([organizationId, clientId])
@@ -209,13 +230,15 @@ model Monitor {
 }
 
 model CheckResult {
-  id         BigInt      @id @default(autoincrement())
-  monitorId  String      @map("monitor_id") @db.Uuid
-  status     CheckStatus
-  responseMs Int?        @map("response_ms")
-  statusCode Int?        @map("status_code")
-  error      String?
-  checkedAt  DateTime    @default(now()) @map("checked_at")
+  id          BigInt      @id @default(autoincrement())
+  monitorId   String      @map("monitor_id") @db.Uuid
+  status      CheckStatus
+  responseMs  Int?        @map("response_ms")
+  statusCode  Int?        @map("status_code")
+  error       String?
+  // Taken during planned maintenance; left out of uptime and SLA figures.
+  maintenance Boolean     @default(false)
+  checkedAt   DateTime    @default(now()) @map("checked_at")
 
   monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
 
@@ -300,7 +323,8 @@ model Incident {
   resolvedAt DateTime? @map("resolved_at")
   cause      String
 
-  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  monitor Monitor          @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  updates IncidentUpdate[]
 
   @@index([monitorId, startedAt])
   @@map("incidents")
@@ -331,4 +355,100 @@ model AuditLog {
 
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// A client's public status page. Its logo and colour come from the client.
+model StatusPage {
+  id           String   @id @default(uuid()) @db.Uuid
+  clientId     String   @unique @map("client_id") @db.Uuid
+  slug         String   @unique
+  title        String
+  isPublic     Boolean  @default(true) @map("is_public")
+  // status.client.com, pointed at us with a CNAME.
+  customDomain String?  @unique @map("custom_domain")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  client   Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  monitors StatusPageMonitor[]
+
+  @@map("status_pages")
+}
+
+// Which monitors a status page shows, in what order, under what public name.
+model StatusPageMonitor {
+  statusPageId String  @map("status_page_id") @db.Uuid
+  monitorId    String  @map("monitor_id") @db.Uuid
+  position     Int
+  displayName  String? @map("display_name")
+  groupName    String? @map("group_name")
+
+  statusPage StatusPage @relation(fields: [statusPageId], references: [id], onDelete: Cascade)
+  monitor    Monitor    @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@id([statusPageId, monitorId])
+  @@map("status_page_monitors")
+}
+
+model MaintenanceWindow {
+  id        String   @id @default(uuid()) @db.Uuid
+  clientId  String   @map("client_id") @db.Uuid
+  startsAt  DateTime @map("starts_at")
+  endsAt    DateTime @map("ends_at")
+  message   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId, startsAt])
+  @@map("maintenance_windows")
+}
+
+// What the agency tells the public while an incident runs.
+model IncidentUpdate {
+  id         String               @id @default(uuid()) @db.Uuid
+  incidentId String               @map("incident_id") @db.Uuid
+  status     IncidentUpdateStatus
+  message    String
+  createdAt  DateTime             @default(now()) @map("created_at")
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([incidentId, createdAt])
+  @@map("incident_updates")
+}
+
+// A monthly SLA report. The PDF is rendered by the worker and stored under api/storage.
+model Report {
+  id        String       @id @default(uuid()) @db.Uuid
+  clientId  String       @map("client_id") @db.Uuid
+  // YYYY-MM
+  period    String
+  status    ReportStatus @default(queued)
+  filePath  String?      @map("file_path")
+  error     String?
+  createdAt DateTime     @default(now()) @map("created_at")
+  sentAt    DateTime?    @map("sent_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, period])
+  @@map("reports")
+}
+
+// A one-time link that turns an email address into a client_viewer. Valid 72 hours.
+model Invite {
+  id          String    @id @default(uuid()) @db.Uuid
+  clientId    String    @map("client_id") @db.Uuid
+  email       String
+  tokenHash   String    @unique @map("token_hash")
+  expiresAt   DateTime  @map("expires_at")
+  acceptedAt  DateTime? @map("accepted_at")
+  createdById String?   @map("created_by_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("invites")
 }

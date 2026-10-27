@@ -21,7 +21,8 @@ export async function rollUpOldChecks(now = new Date()) {
              percentile_cont(0.95) WITHIN GROUP (ORDER BY response_ms),
              count(response_ms)
         FROM check_results
-       WHERE checked_at < ${cutoff}
+       -- Maintenance checks never count towards uptime, so they are not carried over.
+       WHERE checked_at < ${cutoff} AND NOT maintenance
        GROUP BY 1, 2
       ON CONFLICT (monitor_id, hour) DO UPDATE SET
         up_count    = h.up_count + EXCLUDED.up_count,

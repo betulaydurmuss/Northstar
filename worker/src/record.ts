@@ -9,7 +9,11 @@ export type Recorded = {
 // Stores the check and applies the state machine in one transaction. The monitor row is
 // locked first, so if two checks of the same monitor finish together the second sees the
 // state the first wrote, and an incident is never opened twice.
-export async function recordOutcome(monitorId: string, outcome: CheckOutcome): Promise<Recorded> {
+export async function recordOutcome(
+  monitorId: string,
+  outcome: CheckOutcome,
+  inMaintenance = false,
+): Promise<Recorded> {
   return prisma.$transaction(async (tx) => {
     const [row] = await tx.$queryRaw<{ state: MonitorState }[]>`
       SELECT state FROM monitors WHERE id = ${monitorId}::uuid FOR UPDATE`;
@@ -23,11 +27,12 @@ export async function recordOutcome(monitorId: string, outcome: CheckOutcome): P
         responseMs: outcome.responseMs,
         statusCode: outcome.statusCode,
         error: outcome.error,
+        maintenance: inMaintenance,
         checkedAt: now,
       },
     });
 
-    const t = transition(row.state, outcome.status);
+    const t = transition(row.state, outcome.status, inMaintenance);
     await tx.monitor.update({
       where: { id: monitorId },
       data: { state: t.next, lastCheckedAt: now },
@@ -47,7 +52,10 @@ export async function recordOutcome(monitorId: string, outcome: CheckOutcome): P
       });
       if (!open) return { notify: null };
       await tx.incident.update({ where: { id: open.id }, data: { resolvedAt: now } });
-      return { notify: { kind: 'incident-resolved', incidentId: open.id } };
+      // Closed by the start of maintenance: no "recovered" email for planned work.
+      return t.notify
+        ? { notify: { kind: 'incident-resolved', incidentId: open.id } }
+        : { notify: null };
     }
 
     return { notify: null };
