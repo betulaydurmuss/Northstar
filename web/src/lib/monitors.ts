@@ -12,6 +12,11 @@ export type Monitor = {
   intervalSec: number;
   timeoutMs: number;
   retries: number;
+  clientId: string | null;
+  client: { id: string; name: string; brandColor: string } | null;
+  keyword: string | null;
+  keywordMode: 'present' | 'absent' | null;
+  keywordCaseSensitive: boolean;
   isActive: boolean;
   state: 'pending' | 'up' | 'down' | 'paused';
   lastCheckedAt: string | null;
@@ -59,10 +64,11 @@ export type Incident = {
 // Everything live on screen refreshes on the same 30-second beat as the checks.
 const LIVE = 30_000;
 
-export function useMonitors() {
+export function useMonitors(clientId?: string) {
   return useQuery({
-    queryKey: ['monitors'],
-    queryFn: () => api<MonitorListItem[]>('/monitors'),
+    queryKey: clientId ? ['monitors', { clientId }] : ['monitors'],
+    queryFn: () =>
+      api<MonitorListItem[]>(clientId ? '/monitors?clientId=' + clientId : '/monitors'),
     refetchInterval: LIVE,
   });
 }

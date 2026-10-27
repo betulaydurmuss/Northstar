@@ -1,13 +1,15 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Pause, Play, Plus, Search } from 'lucide-react';
+import { Pause, Play, Plus, Search, Upload } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { ClientTag } from '../components/ClientMark';
 import { Segmented } from '../components/Segmented';
 import { StatTile } from '../components/StatTile';
 import { EmptyState, ErrorState, Skeleton } from '../components/States';
 import { StatusBadge } from '../components/StatusBadge';
 import { last24HourLabels, UptimeBar } from '../components/UptimeBar';
 import { api } from '../lib/api';
+import { useIsAgency } from '../lib/auth';
 import { formatUptime, timeAgo } from '../lib/format';
 import { useMonitors, type MonitorListItem } from '../lib/monitors';
 
@@ -44,6 +46,79 @@ function PauseToggle({ monitor }: { monitor: MonitorListItem }) {
     >
       {monitor.isActive ? <Pause size={15} /> : <Play size={15} />}
     </button>
+  );
+}
+
+function MonitorTable({
+  monitors,
+  labels,
+  showClient,
+  canEdit,
+  onOpen,
+}: {
+  monitors: MonitorListItem[];
+  labels: string[];
+  showClient: boolean;
+  canEdit: boolean;
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
+      <table className="table">
+        <thead>
+          <tr>
+            <th>Monitor</th>
+            <th>Status</th>
+            <th style={{ minWidth: 200 }}>Last 24 hours</th>
+            <th style={{ textAlign: 'right' }}>Uptime</th>
+            <th>Checked</th>
+            {canEdit && <th aria-label="Actions" />}
+          </tr>
+        </thead>
+        <tbody>
+          {monitors.map((m) => (
+            <tr key={m.id} className="table-link" onClick={() => onOpen(m.id)}>
+              <td>
+                <Link
+                  to={'/monitors/' + m.id}
+                  style={{ color: 'var(--text)', fontWeight: 500 }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {m.name}
+                </Link>
+                <div className="mono muted" style={{ fontSize: 'var(--text-xs)' }}>
+                  {m.target}
+                </div>
+                {showClient && m.client && (
+                  <ClientTag name={m.client.name} color={m.client.brandColor} />
+                )}
+              </td>
+              <td>
+                <StatusBadge status={m.state} />
+              </td>
+              <td>
+                <UptimeBar
+                  cells={m.last24h}
+                  labels={labels}
+                  summary={m.name + ': ' + formatUptime(m.uptime24h) + ' up in the last 24 hours'}
+                />
+              </td>
+              <td className="num" style={{ textAlign: 'right' }}>
+                {formatUptime(m.uptime24h)}
+              </td>
+              <td className="muted" style={{ whiteSpace: 'nowrap' }}>
+                {m.lastCheckedAt ? timeAgo(m.lastCheckedAt) : 'Not yet'}
+              </td>
+              {canEdit && (
+                <td style={{ textAlign: 'right' }}>
+                  <PauseToggle monitor={m} />
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -85,6 +160,9 @@ export function Overview() {
   const [query, setQuery] = useState('');
   const [state, setState] = useState<StateFilter>('all');
   const [sort, setSort] = useState<Sort>('status');
+  const [clientId, setClientId] = useState('');
+  const [grouped, setGrouped] = useState(false);
+  const isAgency = useIsAgency();
   // The hours the api bucketed are relative to when it answered.
   const fetchedAt = monitors.dataUpdatedAt;
   const labels = useMemo(() => last24HourLabels(new Date(fetchedAt || 0)), [fetchedAt]);
@@ -93,14 +171,39 @@ export function Overview() {
     const q = query.trim().toLowerCase();
     return (monitors.data ?? [])
       .filter((m) => state === 'all' || m.state === state)
+      .filter((m) => !clientId || m.clientId === clientId)
       .filter((m) => !q || m.name.toLowerCase().includes(q) || m.target.toLowerCase().includes(q))
       .sort(sorters[sort]);
-  }, [monitors.data, query, state, sort]);
+  }, [monitors.data, query, state, sort, clientId]);
 
-  const addButton = (
-    <Link className="btn btn-primary" to="/monitors/new">
-      <Plus size={16} /> Add a monitor
-    </Link>
+  const clientOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const m of monitors.data ?? []) if (m.client) seen.set(m.client.id, m.client.name);
+    return [...seen].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [monitors.data]);
+
+  // Grouped: one section per client, ungrouped monitors last. Otherwise one list.
+  const groups = useMemo((): [string | null, MonitorListItem[]][] => {
+    if (!grouped) return [[null, visible]];
+    const byClient = new Map<string, MonitorListItem[]>();
+    for (const m of visible) {
+      const key = m.client?.name ?? 'No client';
+      byClient.set(key, [...(byClient.get(key) ?? []), m]);
+    }
+    return [...byClient].sort(([a], [b]) =>
+      a === 'No client' ? 1 : b === 'No client' ? -1 : a.localeCompare(b),
+    );
+  }, [visible, grouped]);
+
+  const addButton = isAgency && (
+    <div className="row">
+      <Link className="btn" to="/monitors/import">
+        <Upload size={16} /> Import
+      </Link>
+      <Link className="btn btn-primary" to="/monitors/new">
+        <Plus size={16} /> Add a monitor
+      </Link>
+    </div>
   );
 
   let body;
@@ -160,6 +263,29 @@ export function Overview() {
             <option value="name">Sort: name</option>
             <option value="uptime">Sort: lowest uptime</option>
           </select>
+          {clientOptions.length > 0 && (
+            <select
+              className="input"
+              aria-label="Client"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+            >
+              <option value="">All clients</option>
+              {clientOptions.map(([id, name]) => (
+                <option key={id} value={id}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          )}
+          <label className="row muted" style={{ gap: 6, fontSize: 'var(--text-sm)' }}>
+            <input
+              type="checkbox"
+              checked={grouped}
+              onChange={(e) => setGrouped(e.target.checked)}
+            />
+            Group by client
+          </label>
         </div>
 
         {visible.length === 0 ? (
@@ -172,6 +298,7 @@ export function Overview() {
                 onClick={() => {
                   setQuery('');
                   setState('all');
+                  setClientId('');
                 }}
               >
                 Clear filters
@@ -179,60 +306,37 @@ export function Overview() {
             }
           />
         ) : (
-          <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>Monitor</th>
-                  <th>Status</th>
-                  <th style={{ minWidth: 200 }}>Last 24 hours</th>
-                  <th style={{ textAlign: 'right' }}>Uptime</th>
-                  <th>Checked</th>
-                  <th aria-label="Actions" />
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((m) => (
-                  <tr
-                    key={m.id}
-                    className="table-link"
-                    onClick={() => navigate(`/monitors/${m.id}`)}
-                  >
-                    <td>
-                      <Link
-                        to={`/monitors/${m.id}`}
-                        style={{ color: 'var(--text)', fontWeight: 500 }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {m.name}
-                      </Link>
-                      <div className="mono muted" style={{ fontSize: 'var(--text-xs)' }}>
-                        {m.target}
-                      </div>
-                    </td>
-                    <td>
-                      <StatusBadge status={m.state} />
-                    </td>
-                    <td>
-                      <UptimeBar
-                        cells={m.last24h}
-                        labels={labels}
-                        summary={`${m.name}: ${formatUptime(m.uptime24h)} up in the last 24 hours`}
+          <div className="stack" style={{ gap: 20 }}>
+            {groups.map(([group, items]) => (
+              <section key={group ?? 'all'} className="stack" style={{ gap: 8 }}>
+                {group !== null && (
+                  <h2 className="row" style={{ fontSize: 'var(--text-md)', gap: 8 }}>
+                    {items[0]?.client && (
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: 3,
+                          background: items[0].client.brandColor,
+                        }}
                       />
-                    </td>
-                    <td className="num" style={{ textAlign: 'right' }}>
-                      {formatUptime(m.uptime24h)}
-                    </td>
-                    <td className="muted" style={{ whiteSpace: 'nowrap' }}>
-                      {m.lastCheckedAt ? timeAgo(m.lastCheckedAt) : 'Not yet'}
-                    </td>
-                    <td style={{ textAlign: 'right' }}>
-                      <PauseToggle monitor={m} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    )}
+                    {group}
+                    <span className="muted" style={{ fontWeight: 400 }}>
+                      {items.length}
+                    </span>
+                  </h2>
+                )}
+                <MonitorTable
+                  monitors={items}
+                  labels={labels}
+                  showClient={!grouped}
+                  canEdit={isAgency}
+                  onOpen={(id) => navigate('/monitors/' + id)}
+                />
+              </section>
+            ))}
           </div>
         )}
       </>

@@ -1,25 +1,36 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { LIMITS, monitorInput, type MonitorInput } from '@northstar/shared/monitor';
+import {
+  LIMITS,
+  monitorInput,
+  usesHttp,
+  type MonitorFormValues,
+  type MonitorInput,
+} from '@northstar/shared/monitor';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Globe, Radio } from 'lucide-react';
+import { FileSearch, Globe, Radio } from 'lucide-react';
 import { useForm, type Path } from 'react-hook-form';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ErrorState, Skeleton } from '../../components/States';
 import { api, ApiError } from '../../lib/api';
+import { useClients } from '../../lib/clients';
 import { useMonitor, type Monitor } from '../../lib/monitors';
 
-const defaults: MonitorInput = {
+const defaults: MonitorFormValues = {
   name: '',
   type: 'http',
   target: '',
   intervalSec: LIMITS.intervalSec.default,
   timeoutMs: LIMITS.timeoutMs.default,
   retries: LIMITS.retries.default,
+  clientId: null,
+  keyword: null,
+  keywordMode: 'present',
+  keywordCaseSensitive: false,
 };
 
 const INTERVALS = [30, 60, 120, 300];
 
-function Form({ initial, id }: { initial: MonitorInput; id?: string }) {
+function Form({ initial, id }: { initial: MonitorFormValues; id?: string }) {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const {
@@ -29,8 +40,12 @@ function Form({ initial, id }: { initial: MonitorInput; id?: string }) {
     setValue,
     setError,
     formState: { errors, isSubmitting },
-  } = useForm<MonitorInput>({ resolver: zodResolver(monitorInput), defaultValues: initial });
+  } = useForm<MonitorFormValues, unknown, MonitorInput>({
+    resolver: zodResolver(monitorInput),
+    defaultValues: initial,
+  });
   const type = watch('type');
+  const clients = useClients();
 
   const save = useMutation({
     mutationFn: (values: MonitorInput) =>
@@ -47,7 +62,8 @@ function Form({ initial, id }: { initial: MonitorInput; id?: string }) {
       const details =
         err instanceof ApiError ? (err.details as { path: string; message: string }[]) : null;
       if (details?.length) {
-        for (const d of details) setError(d.path as Path<MonitorInput>, { message: d.message });
+        for (const d of details)
+          setError(d.path as Path<MonitorFormValues>, { message: d.message });
       } else if (err instanceof ApiError && /address|host/i.test(err.message)) {
         setError('target', { message: err.message });
       } else {
@@ -79,6 +95,12 @@ function Form({ initial, id }: { initial: MonitorInput; id?: string }) {
           {(
             [
               ['http', Globe, 'Website', 'An HTTP request; up on any 2xx or 3xx answer'],
+              [
+                'keyword',
+                FileSearch,
+                'Page content',
+                'Up only if the page shows (or hides) a phrase',
+              ],
               ['ping', Radio, 'Server', 'A TCP connection to a host and port'],
             ] as const
           ).map(([value, Icon, label, hint]) => (
@@ -91,7 +113,7 @@ function Form({ initial, id }: { initial: MonitorInput; id?: string }) {
               onClick={() => setValue('type', value, { shouldValidate: false })}
               style={{
                 flex: 1,
-                minWidth: 200,
+                minWidth: 160,
                 textAlign: 'left',
                 cursor: 'pointer',
                 padding: 14,
@@ -124,11 +146,11 @@ function Form({ initial, id }: { initial: MonitorInput; id?: string }) {
       </div>
 
       <div className="field">
-        <label htmlFor="target">{type === 'http' ? 'URL' : 'Host and port'}</label>
+        <label htmlFor="target">{usesHttp(type) ? 'URL' : 'Host and port'}</label>
         <input
           id="target"
           className="input mono"
-          placeholder={type === 'http' ? 'https://harborpine.coffee' : 'mail.harborpine.coffee:587'}
+          placeholder={usesHttp(type) ? 'https://harborpine.coffee' : 'mail.harborpine.coffee:587'}
           autoComplete="off"
           spellCheck={false}
           {...register('target')}
@@ -142,6 +164,47 @@ function Form({ initial, id }: { initial: MonitorInput; id?: string }) {
             </span>
           )
         )}
+      </div>
+
+      {type === 'keyword' && (
+        <div className="grid-2" style={{ gridTemplateColumns: '2fr 1fr' }}>
+          <div className="field">
+            <label htmlFor="keyword">Phrase</label>
+            <input
+              id="keyword"
+              className="input"
+              placeholder="Order online"
+              {...register('keyword')}
+            />
+            {errors.keyword ? (
+              <span className="field-error">{errors.keyword.message}</span>
+            ) : (
+              <label className="row muted" style={{ gap: 6, fontSize: 'var(--text-xs)' }}>
+                <input type="checkbox" {...register('keywordCaseSensitive')} /> Match upper and
+                lower case exactly
+              </label>
+            )}
+          </div>
+          <div className="field">
+            <label htmlFor="keywordMode">The page is up when the phrase is</label>
+            <select id="keywordMode" className="input" {...register('keywordMode')}>
+              <option value="present">Present</option>
+              <option value="absent">Absent</option>
+            </select>
+          </div>
+        </div>
+      )}
+
+      <div className="field">
+        <label htmlFor="clientId">Client</label>
+        <select id="clientId" className="input" {...register('clientId')}>
+          <option value="">No client</option>
+          {clients.data?.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div
@@ -244,7 +307,10 @@ export function EditMonitor() {
       ) : monitor.isError ? (
         <ErrorState message="This monitor could not be found." />
       ) : (
-        <Form id={id} initial={monitor.data} />
+        <Form
+          id={id}
+          initial={{ ...monitor.data, keywordMode: monitor.data.keywordMode ?? 'present' }}
+        />
       )}
     </>
   );

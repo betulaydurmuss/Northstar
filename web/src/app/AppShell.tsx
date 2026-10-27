@@ -1,4 +1,4 @@
-import { Activity, LayoutGrid, LogOut, ShieldCheck } from 'lucide-react';
+import { Activity, CalendarClock, LayoutGrid, LogOut, ShieldCheck, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { Logo } from '../components/Logo';
@@ -32,8 +32,14 @@ export function AppShell() {
             <NavLink to="/" end>
               <LayoutGrid size={16} /> Overview
             </NavLink>
+            <NavLink to="/clients">
+              <Users size={16} /> Clients
+            </NavLink>
             <NavLink to="/incidents">
               <Activity size={16} /> Incidents
+            </NavLink>
+            <NavLink to="/expirations">
+              <CalendarClock size={16} /> Expiring soon
             </NavLink>
           </nav>
         </div>
@@ -48,7 +54,7 @@ export function AppShell() {
       </aside>
       <div className="main">
         <header className={`topbar${scrolled ? ' scrolled' : ''}`}>
-          <span className="muted">{me?.name}</span>
+          <span className="muted">{me?.membership?.organization.name ?? me?.name}</span>
           <div className="row" style={{ gap: 4 }}>
             <span className="muted mono" style={{ fontSize: 'var(--text-xs)' }}>
               {me?.email}
