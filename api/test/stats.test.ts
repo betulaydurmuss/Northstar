@@ -41,9 +41,13 @@ beforeEach(async () => {
   await resetDb();
   const signedIn = await signIn('mira@brightline.studio');
   auth = signedIn.auth;
+  const org = await prisma.organization.findFirstOrThrow({
+    where: { memberships: { some: { userId: signedIn.user.id } } },
+  });
   const monitor = await prisma.monitor.create({
     data: {
       ownerId: signedIn.user.id,
+      organizationId: org.id,
       name: 'Sable Architects',
       target: 'https://1.1.1.1/',
       state: 'up',

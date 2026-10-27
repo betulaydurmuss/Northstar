@@ -1,11 +1,21 @@
+import type { MembershipRole } from '@prisma/client';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { prisma } from '../db.js';
 import { HttpError } from '../http.js';
 import { verifyAccessToken, type AccessClaims } from './tokens.js';
 
+export type Auth = {
+  userId: string;
+  sessionId: string;
+  role: AccessClaims['role'];
+  mfa: boolean;
+  // Where the user belongs. Absent for a platform admin who is not part of an agency.
+  membership: { organizationId: string; role: MembershipRole; clientId: string | null } | null;
+};
+
 declare module 'express-serve-static-core' {
   interface Request {
-    auth?: { userId: string; sessionId: string; role: AccessClaims['role']; mfa: boolean };
+    auth?: Auth;
   }
 }
 
@@ -22,10 +32,17 @@ export function requireAuth(options: Options = {}): RequestHandler {
     if (!claims) throw new HttpError(401, 'Sign in to continue');
 
     // Access tokens are short-lived, but "sign out everywhere" should still take effect
-    // at once, so the session behind the token is checked on every request.
+    // at once, so the session behind the token is checked on every request. The
+    // membership is read in the same query, so a role change applies immediately too.
     const session = await prisma.session.findUnique({
       where: { id: claims.sid },
-      select: { revokedAt: true, expiresAt: true },
+      select: {
+        revokedAt: true,
+        expiresAt: true,
+        user: {
+          select: { membership: { select: { organizationId: true, role: true, clientId: true } } },
+        },
+      },
     });
     if (!session || session.revokedAt || session.expiresAt < new Date()) {
       throw new HttpError(401, 'Sign in to continue');
@@ -35,7 +52,13 @@ export function requireAuth(options: Options = {}): RequestHandler {
       throw new HttpError(403, 'Set up two-factor authentication to continue');
     }
 
-    req.auth = { userId: claims.sub, sessionId: claims.sid, role: claims.role, mfa: claims.mfa };
+    req.auth = {
+      userId: claims.sub,
+      sessionId: claims.sid,
+      role: claims.role,
+      mfa: claims.mfa,
+      membership: session.user.membership,
+    };
     next();
   };
 }

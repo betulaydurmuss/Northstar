@@ -18,25 +18,54 @@ const STEP = 5 * 60_000; // one historical check every five minutes
 
 type Outage = { daysAgo: number; minutes: number; cause: string };
 
-const monitors: { name: string; target: string; baseMs: number; outages: Outage[] }[] = [
-  { name: 'Harbor & Pine Coffee', target: 'https://example.com', baseMs: 140, outages: [] },
+type Site = {
+  name: string;
+  target: string;
+  baseMs: number;
+  outages: Outage[];
+  brandColor: string;
+  contactEmail: string;
+};
+
+const monitors: Site[] = [
+  {
+    name: 'Harbor & Pine Coffee',
+    target: 'https://example.com',
+    baseMs: 140,
+    outages: [],
+    brandColor: '#2F7D5B',
+    contactEmail: 'hello@harborpine.coffee',
+  },
   {
     name: 'Marlowe Dental Clinic',
     target: 'https://www.iana.org',
     baseMs: 310,
+    brandColor: '#1E6FD9',
+    contactEmail: 'office@marlowedental.co.uk',
     outages: [{ daysAgo: 5.4, minutes: 10, cause: 'The server answered 502' }],
   },
-  { name: 'Sable Architects', target: 'https://www.wikipedia.org', baseMs: 180, outages: [] },
+  {
+    name: 'Sable Architects',
+    target: 'https://www.wikipedia.org',
+    baseMs: 180,
+    outages: [],
+    brandColor: '#3A3A3A',
+    contactEmail: 'studio@sablearchitects.com',
+  },
   {
     name: 'Lumen Yoga Studio',
     target: 'https://www.mozilla.org',
     baseMs: 260,
+    brandColor: '#C2410C',
+    contactEmail: 'namaste@lumenyoga.studio',
     outages: [{ daysAgo: 18.2, minutes: 45, cause: 'No response within 10 seconds' }],
   },
   {
     name: 'Kettle & Crumb Bakery',
     target: 'https://httpbin.org/status/200',
     baseMs: 420,
+    brandColor: '#B45309',
+    contactEmail: 'orders@kettleandcrumb.com',
     outages: [
       { daysAgo: 2.3, minutes: 25, cause: 'The server answered 503' },
       { daysAgo: 11.6, minutes: 15, cause: 'The domain name could not be resolved' },
@@ -57,7 +86,7 @@ function responseMs(base: number, at: number) {
 
 // History is written up to `until`: the first real check if the worker has already run,
 // so seeded and live data never overlap.
-async function seedHistory(monitorId: string, m: (typeof monitors)[number], until: number) {
+async function seedHistory(monitorId: string, m: Site, until: number) {
   const now = until;
   const isDown = (at: number) =>
     m.outages.some((o) => {
@@ -129,13 +158,38 @@ async function main() {
       email: 'demo@northstar.local',
       name: 'Brightline Studio',
       passwordHash: await argon2.hash(password!, { type: argon2.argon2id }),
+      membership: {
+        create: { role: 'agency_admin', organization: { create: { name: 'Brightline Studio' } } },
+      },
     },
+    include: { membership: true },
   });
+  const organizationId = user.membership!.organizationId;
 
   for (const m of monitors) {
-    const monitor =
-      (await prisma.monitor.findFirst({ where: { ownerId: user.id, name: m.name } })) ??
-      (await prisma.monitor.create({ data: { name: m.name, target: m.target, ownerId: user.id } }));
+    // Each site belongs to a client of the same name, in that client's brand colour.
+    const client = await prisma.client.upsert({
+      where: { organizationId_name: { organizationId, name: m.name } },
+      update: {},
+      create: {
+        organizationId,
+        name: m.name,
+        brandColor: m.brandColor,
+        contactEmail: m.contactEmail,
+      },
+    });
+    const existing = await prisma.monitor.findFirst({ where: { organizationId, name: m.name } });
+    const monitor = existing
+      ? await prisma.monitor.update({ where: { id: existing.id }, data: { clientId: client.id } })
+      : await prisma.monitor.create({
+          data: {
+            name: m.name,
+            target: m.target,
+            ownerId: user.id,
+            organizationId,
+            clientId: client.id,
+          },
+        });
     const first = await prisma.checkResult.findFirst({
       where: { monitorId: monitor.id },
       orderBy: { checkedAt: 'asc' },

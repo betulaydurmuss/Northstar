@@ -10,13 +10,19 @@ let monitorId: string;
 
 beforeEach(async () => {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE users, monitors, check_results_hourly RESTART IDENTITY CASCADE',
+    'TRUNCATE users, organizations, monitors, check_results_hourly RESTART IDENTITY CASCADE',
   );
   const owner = await prisma.user.create({
     data: { email: 'mira@brightline.studio', name: 'Mira Okafor', passwordHash: 'x' },
   });
+  const org = await prisma.organization.create({ data: { name: 'Brightline Studio' } });
   const monitor = await prisma.monitor.create({
-    data: { ownerId: owner.id, name: 'Lumen Yoga Studio', target: 'https://1.1.1.1/' },
+    data: {
+      ownerId: owner.id,
+      organizationId: org.id,
+      name: 'Lumen Yoga Studio',
+      target: 'https://1.1.1.1/',
+    },
   });
   monitorId = monitor.id;
 });

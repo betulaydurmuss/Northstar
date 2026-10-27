@@ -13,20 +13,39 @@ export function testApp(limits = { perIp: 1000, perAccount: 1000 }) {
 
 export async function resetDb() {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE users, sessions, password_reset_tokens, monitors, check_results_hourly, audit_logs RESTART IDENTITY CASCADE',
+    'TRUNCATE users, organizations, sessions, password_reset_tokens, monitors, check_results_hourly, domains, expiry_notices, audit_logs RESTART IDENTITY CASCADE',
   );
 }
 
+// By default each user runs their own agency. Pass `agency` to add them to an existing one,
+// and `clientId` (with role client_viewer) to make them a client's viewer.
 export async function createUser(
-  overrides: { email?: string; role?: 'user' | 'super_admin' } = {},
+  overrides: {
+    email?: string;
+    role?: 'user' | 'super_admin';
+    agency?: string;
+    membership?: 'agency_admin' | 'client_viewer';
+    clientId?: string;
+  } = {},
 ) {
+  const email = overrides.email ?? 'mira@brightline.studio';
   return prisma.user.create({
     data: {
-      email: overrides.email ?? 'mira@brightline.studio',
+      email,
       name: 'Mira Okafor',
       role: overrides.role ?? 'user',
       passwordHash: await hashPassword(PASSWORD),
+      membership: {
+        create: {
+          role: overrides.membership ?? 'agency_admin',
+          clientId: overrides.clientId ?? null,
+          organizationId: overrides.agency
+            ? overrides.agency
+            : (await prisma.organization.create({ data: { name: `${email} agency` } })).id,
+        },
+      },
     },
+    include: { membership: true },
   });
 }
 

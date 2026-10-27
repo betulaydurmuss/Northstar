@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { requireAuth } from '../auth/middleware.js';
 import { prisma } from '../db.js';
+import { scopedByMonitor } from '../tenancy.js';
 
 export function incidentsRouter() {
   const router = Router();
@@ -19,8 +20,8 @@ export function incidentsRouter() {
 
     const incidents = await prisma.incident.findMany({
       where: {
-        // Scoped through the monitor's owner, so a foreign monitorId returns nothing.
-        monitor: { ownerId: req.auth!.userId },
+        // Scoped through the monitor, so a foreign monitorId returns nothing.
+        ...scopedByMonitor(req),
         ...(q.monitorId ? { monitorId: q.monitorId } : {}),
         ...(q.status === 'ongoing' ? { resolvedAt: null } : {}),
         ...(q.status === 'resolved' ? { resolvedAt: { not: null } } : {}),

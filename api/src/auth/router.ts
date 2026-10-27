@@ -98,8 +98,16 @@ export function authRouter(limits: AuthLimits) {
     const existing = await prisma.user.findUnique({ where: { email: body.email } });
     if (existing) throw new HttpError(409, 'An account with this email already exists');
 
+    // Signing up creates the agency too, with this person as its first admin.
     const user = await prisma.user.create({
-      data: { name: body.name, email: body.email, passwordHash: await hashPassword(body.password) },
+      data: {
+        name: body.name,
+        email: body.email,
+        passwordHash: await hashPassword(body.password),
+        membership: {
+          create: { role: 'agency_admin', organization: { create: { name: body.name } } },
+        },
+      },
     });
     const { accessToken, refreshToken } = await startSession(user, req, false);
     setRefreshCookie(res, refreshToken);
@@ -179,10 +187,22 @@ export function authRouter(limits: AuthLimits) {
   });
 
   router.get('/me', requireAuth({ allowPendingMfa: true }), async (req, res) => {
-    const user = await prisma.user.findUniqueOrThrow({ where: { id: req.auth!.userId } });
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { id: req.auth!.userId },
+      include: {
+        membership: {
+          select: {
+            role: true,
+            organization: { select: { id: true, name: true } },
+            client: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
     res.json({
       ...publicUser(user),
       twoFactorSetupRequired: user.role === 'super_admin' && !req.auth!.mfa,
+      membership: user.membership,
     });
   });
 

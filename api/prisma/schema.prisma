@@ -17,6 +17,28 @@ enum Role {
 enum MonitorType {
   http
   ping
+  keyword
+}
+
+enum KeywordMode {
+  present
+  absent
+}
+
+// agency_admin runs the agency; client_viewer is a customer who sees only their client.
+enum MembershipRole {
+  agency_admin
+  client_viewer
+}
+
+enum DomainSource {
+  rdap
+  manual
+}
+
+enum ExpiryKind {
+  certificate
+  domain
 }
 
 // What the dashboard shows. `pending` means the monitor has never been checked.
@@ -52,6 +74,7 @@ model User {
   createdAt    DateTime  @default(now()) @map("created_at")
 
   sessions             Session[]
+  membership           Membership?
   passwordResets       PasswordResetToken[]
   monitors             Monitor[]
   notificationChannels NotificationChannel[]
@@ -95,27 +118,93 @@ model PasswordResetToken {
   @@map("password_reset_tokens")
 }
 
-model Monitor {
-  id            String       @id @default(uuid()) @db.Uuid
-  ownerId       String       @map("owner_id") @db.Uuid
-  name          String
-  type          MonitorType  @default(http)
-  target        String
-  intervalSec   Int          @default(60) @map("interval_sec")
-  timeoutMs     Int          @default(10000) @map("timeout_ms")
-  retries       Int          @default(2)
-  isActive      Boolean      @default(true) @map("is_active")
-  state         MonitorState @default(pending)
-  lastCheckedAt DateTime?    @map("last_checked_at")
-  createdAt     DateTime     @default(now()) @map("created_at")
-  updatedAt     DateTime     @updatedAt @map("updated_at")
+// An agency. Every monitor, client and domain belongs to exactly one, and every query
+// is filtered by it.
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  plan      String   @default("starter")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  owner     User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  checks    CheckResult[]
-  hourly    CheckHourly[]
-  incidents Incident[]
+  clients     Client[]
+  memberships Membership[]
+  monitors    Monitor[]
+  domains     Domain[]
+
+  @@map("organizations")
+}
+
+// One of the agency's customers: a group of monitors with its own brand for status pages
+// and reports.
+model Client {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  contactEmail   String?  @map("contact_email")
+  brandColor     String   @default("#818CF8") @map("brand_color")
+  // A file name under api/storage/logos, served from /api/files/logos/.
+  logoPath       String?  @map("logo_path")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  monitors     Monitor[]
+  memberships  Membership[]
+  domains      Domain[]
+
+  @@unique([organizationId, name])
+  @@map("clients")
+}
+
+// Ties a user to their organization. A client_viewer is also tied to one client.
+model Membership {
+  id             String         @id @default(uuid()) @db.Uuid
+  userId         String         @unique @map("user_id") @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  clientId       String?        @map("client_id") @db.Uuid
+  role           MembershipRole
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("memberships")
+}
+
+model Monitor {
+  id                   String       @id @default(uuid()) @db.Uuid
+  // Who created it, and who gets the alert emails.
+  ownerId              String       @map("owner_id") @db.Uuid
+  organizationId       String       @map("organization_id") @db.Uuid
+  clientId             String?      @map("client_id") @db.Uuid
+  name                 String
+  type                 MonitorType  @default(http)
+  target               String
+  intervalSec          Int          @default(60) @map("interval_sec")
+  timeoutMs            Int          @default(10000) @map("timeout_ms")
+  retries              Int          @default(2)
+  isActive             Boolean      @default(true) @map("is_active")
+  state                MonitorState @default(pending)
+  lastCheckedAt        DateTime?    @map("last_checked_at")
+  // Keyword monitors only: the text to look for, and whether it must be there or not.
+  keyword              String?      @map("keyword")
+  keywordMode          KeywordMode? @map("keyword_mode")
+  keywordCaseSensitive Boolean      @default(false) @map("keyword_case_sensitive")
+  createdAt            DateTime     @default(now()) @map("created_at")
+  updatedAt            DateTime     @updatedAt @map("updated_at")
+
+  owner        User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  checks       CheckResult[]
+  hourly       CheckHourly[]
+  incidents    Incident[]
+  certificate  Certificate?
 
   @@index([ownerId])
+  @@index([organizationId, clientId])
   @@map("monitors")
 }
 
@@ -151,6 +240,57 @@ model CheckHourly {
 
   @@id([monitorId, hour])
   @@map("check_results_hourly")
+}
+
+// The TLS certificate an https monitor last presented, refreshed at most once a day.
+model Certificate {
+  monitorId  String    @id @map("monitor_id") @db.Uuid
+  issuer     String?
+  subject    String?
+  validFrom  DateTime? @map("valid_from")
+  validTo    DateTime? @map("valid_to")
+  // False when the chain did not verify; the reason is in error.
+  authorized Boolean
+  error      String?
+  checkedAt  DateTime  @map("checked_at")
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@map("certificates")
+}
+
+// A registrable domain behind one or more monitors, and when its registration runs out.
+model Domain {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  clientId       String?      @map("client_id") @db.Uuid
+  domain         String
+  expiresAt      DateTime?    @map("expires_at")
+  // rdap when looked up automatically, manual when someone typed the date in.
+  source         DomainSource @default(rdap)
+  error          String?
+  checkedAt      DateTime?    @map("checked_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, domain])
+  @@map("domains")
+}
+
+// One row per expiry warning sent, so each threshold is emailed once per expiry date.
+// A renewed certificate has a new date and starts over.
+model ExpiryNotice {
+  id        BigInt     @id @default(autoincrement())
+  kind      ExpiryKind
+  subjectId String     @map("subject_id")
+  expiresAt DateTime   @map("expires_at")
+  threshold Int
+  sentAt    DateTime   @default(now()) @map("sent_at")
+
+  @@unique([kind, subjectId, expiresAt, threshold])
+  @@map("expiry_notices")
 }
 
 model Incident {
