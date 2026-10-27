@@ -3,6 +3,8 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   plugins: [react()],
+  // Read the repository's single .env. Only VITE_-prefixed values reach the browser.
+  envDir: '..',
   server: {
     port: 5173,
     // Same-origin requests in development keep cookies SameSite=Strict-friendly.
