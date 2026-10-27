@@ -133,6 +133,23 @@ describe('sniffImage and svgProblem', () => {
     expect(sniffImage(Buffer.from('<html><svg></svg></html>'))).toBeNull();
   });
 
+  it.each([
+    ['a handler after a slash', '<svg><g/onload="alert(1)"/></svg>'],
+    ['an encoded javascript: link', '<svg><a href="jav&#x61;script:alert(1)"/></svg>'],
+    ['an external reference', '<svg><use href="https://evil.example/x.svg#a"/></svg>'],
+    ['an external xlink', '<svg><image xlink:href="//evil.example/p.png"/></svg>'],
+    ['a CSS url()', '<svg><rect style="fill:url(https://evil.example/t)"/></svg>'],
+    ['an entity', '<!DOCTYPE svg [<!ENTITY x "y">]><svg></svg>'],
+  ])('refuses %s', (_label, svg) => {
+    expect(svgProblem(svg)).not.toBeNull();
+  });
+
+  it('still accepts links inside the file, such as gradients', () => {
+    const svg =
+      '<svg><defs><linearGradient id="g"/></defs><rect fill="url(#g)"/><use href="#g"/></svg>';
+    expect(svgProblem(svg)).toBeNull();
+  });
+
   it('flags event handlers and embedded HTML', () => {
     expect(svgProblem('<svg onload="x()"></svg>')).not.toBeNull();
     expect(svgProblem('<svg><foreignObject></foreignObject></svg>')).not.toBeNull();

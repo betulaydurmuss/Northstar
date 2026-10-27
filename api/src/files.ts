@@ -32,13 +32,25 @@ export function sniffImage(buf: Buffer): Kind | null {
   return null;
 }
 
-// Defence in depth: the serving headers already sandbox SVG, but a logo has no business
-// carrying script or external references, so such files are refused outright.
+// Defence in depth: the serving headers already sandbox SVG, but a logo is only shapes
+// and colours. Anything that can run code, pull in another resource or hide what it is
+// (character references, entities) is refused outright rather than cleaned.
 export function svgProblem(svg: string): string | null {
-  if (/<script[\s>]/i.test(svg)) return 'SVG logos cannot contain scripts';
-  if (/\son[a-z]+\s*=/i.test(svg)) return 'SVG logos cannot contain event handlers';
+  if (/<script[\s/>]/i.test(svg)) return 'SVG logos cannot contain scripts';
+  // Attribute names can follow a slash as well as a space: <g/onload=...>.
+  if (/(^|[^a-z0-9_:-])on[a-z]+\s*=/i.test(svg)) return 'SVG logos cannot contain event handlers';
   if (/javascript:/i.test(svg)) return 'SVG logos cannot contain javascript: links';
-  if (/<foreignObject[\s>]/i.test(svg)) return 'SVG logos cannot embed HTML';
+  if (/&#|<!ENTITY/i.test(svg)) return 'SVG logos cannot contain character references or entities';
+  if (/<(foreignObject|iframe|embed|object)[\s/>]/i.test(svg)) return 'SVG logos cannot embed HTML';
+  // Only links to something inside the same file (#gradient) are allowed. Quotes are
+  // matched explicitly: an optional quote would let the engine count the quote itself as
+  // the first character of the value, and refuse href="#g".
+  if (/(?:xlink:)?href\s*=\s*(?:"\s*(?!#)|'\s*(?!#)|(?!["'\s#]))/i.test(svg)) {
+    return 'SVG logos cannot link to other files';
+  }
+  if (/url\(\s*(?:"\s*(?!#)|'\s*(?!#)|(?!["'\s#]))/i.test(svg)) {
+    return 'SVG logos cannot load other files';
+  }
   return null;
 }
 
