@@ -2,9 +2,11 @@ import {
   CHECKS_QUEUE,
   MAINTENANCE_QUEUE,
   NOTIFICATIONS_QUEUE,
+  REPORTS_QUEUE,
   schedulerId,
   type CheckJob,
   type NotificationJob,
+  type ReportJob,
 } from '@northstar/shared/queues';
 import { Queue, Worker } from 'bullmq';
 import { runCheck } from './checks/run.js';
@@ -12,7 +14,9 @@ import { config } from './config.js';
 import { prisma } from './db.js';
 import { sendIncidentEmail } from './notify/email.js';
 import { ensureExpiryData, refreshAndWarn } from './expiry.js';
+import { inMaintenance } from './maintenance.js';
 import { recordOutcome } from './record.js';
+import { queueMonthlyReports, renderReport } from './reports/run.js';
 import { createRedis } from './redis.js';
 import { rollUpOldChecks } from './rollup.js';
 import { syncSchedulers } from './scheduler.js';
@@ -39,7 +43,7 @@ const checkWorker = new Worker<CheckJob>(
       return;
     }
     const outcome = await runCheck(monitor, { allowPrivate: config.ALLOW_PRIVATE_TARGETS });
-    const { notify } = await recordOutcome(monitor.id, outcome);
+    const { notify } = await recordOutcome(monitor.id, outcome, await inMaintenance(monitor));
     if (notify) await notifications.add(notify.kind, notify);
     // A failed certificate or RDAP lookup must not fail the check that triggered it.
     await ensureExpiryData(monitor).catch((err: Error) =>
@@ -55,6 +59,14 @@ const notifyWorker = new Worker<NotificationJob>(
   { connection },
 );
 
+const reports = new Queue<ReportJob>(REPORTS_QUEUE, { connection });
+// One at a time: each render starts a headless browser.
+const reportWorker = new Worker<ReportJob>(
+  REPORTS_QUEUE,
+  (job) => renderReport(job.data.reportId, job.data.send),
+  { connection, concurrency: 1 },
+);
+
 const maintenance = new Queue(MAINTENANCE_QUEUE, { connection });
 const maintenanceWorker = new Worker(
   MAINTENANCE_QUEUE,
@@ -62,6 +74,16 @@ const maintenanceWorker = new Worker(
     if (job.name === 'rollup') {
       const { hours, deleted } = await rollUpOldChecks();
       console.log(`rollup: ${deleted} checks folded into ${hours} hourly rows`);
+    }
+    if (job.name === 'monthly-reports') {
+      const { period, clients } = await queueMonthlyReports((reportId) =>
+        reports.add(
+          'render',
+          { reportId, send: true },
+          { attempts: 2, removeOnComplete: true, removeOnFail: 100 },
+        ),
+      );
+      console.log(`reports: ${clients} queued for ${period}`);
     }
     if (job.name === 'expiry') {
       const { monitors, warned } = await refreshAndWarn();
@@ -83,7 +105,14 @@ await maintenance.upsertJobScheduler(
   { name: 'expiry', opts: { removeOnComplete: true, removeOnFail: 50 } },
 );
 
-for (const w of [checkWorker, notifyWorker, maintenanceWorker]) {
+// 09:00 UTC on the 1st: last month's report for every client, emailed as a PDF.
+await maintenance.upsertJobScheduler(
+  'monthly-reports',
+  { pattern: '0 9 1 * *', tz: 'UTC' },
+  { name: 'monthly-reports', opts: { removeOnComplete: true, removeOnFail: 50 } },
+);
+
+for (const w of [checkWorker, notifyWorker, maintenanceWorker, reportWorker]) {
   w.on('failed', (job, err) => console.error(`${w.name} job ${job?.id} failed: ${err.message}`));
 }
 
@@ -96,8 +125,13 @@ if (config.ALLOW_PRIVATE_TARGETS) {
 }
 
 async function shutdown() {
-  await Promise.all([checkWorker.close(), notifyWorker.close(), maintenanceWorker.close()]);
-  await Promise.all([checks.close(), notifications.close(), maintenance.close()]);
+  await Promise.all([
+    checkWorker.close(),
+    notifyWorker.close(),
+    maintenanceWorker.close(),
+    reportWorker.close(),
+  ]);
+  await Promise.all([checks.close(), notifications.close(), maintenance.close(), reports.close()]);
   await prisma.$disconnect();
   connection.disconnect();
   process.exit(0);
