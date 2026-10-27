@@ -59,6 +59,7 @@ export type Incident = {
   resolvedAt: string | null;
   cause: string;
   durationMs: number;
+  updates: { id: string; status: string; message: string; createdAt: string }[];
 };
 
 // Everything live on screen refreshes on the same 30-second beat as the checks.

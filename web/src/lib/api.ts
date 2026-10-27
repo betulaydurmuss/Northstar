@@ -54,7 +54,11 @@ async function refresh(): Promise<boolean> {
 
 type Options = Omit<RequestInit, 'body'> & { body?: unknown };
 
-export async function api<T>(path: string, options: Options = {}, retried = false): Promise<T> {
+const signedOut = (path: string) =>
+  SIGNED_OUT_PATHS.includes(path) || path.startsWith('/invites/') || path.startsWith('/public/');
+
+// Sends the request with the access token, refreshing it once if it has expired.
+async function send(path: string, options: Options, retried = false): Promise<Response> {
   const headers = new Headers(options.headers);
   headers.set('X-Requested-With', CSRF['X-Requested-With']);
   if (options.body !== undefined && !(options.body instanceof FormData)) {
@@ -74,17 +78,26 @@ export async function api<T>(path: string, options: Options = {}, retried = fals
           : JSON.stringify(options.body),
   });
 
-  if (res.status === 401 && !retried && !SIGNED_OUT_PATHS.includes(path)) {
-    if (await refresh()) return api<T>(path, options, true);
+  if (res.status === 401 && !retried && !signedOut(path)) {
+    if (await refresh()) return send(path, options, true);
   }
 
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string; details?: unknown };
     throw new ApiError(res.status, body.error ?? res.statusText, body.details);
   }
+  return res;
+}
 
+export async function api<T>(path: string, options: Options = {}): Promise<T> {
+  const res = await send(path, options);
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+// For files behind sign-in, such as report PDFs: a plain link cannot carry the token.
+export async function authorizedBlob(path: string): Promise<Blob> {
+  return (await send(path, {})).blob();
 }
 
 export { refresh as refreshSession };

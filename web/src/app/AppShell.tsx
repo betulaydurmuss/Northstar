@@ -1,8 +1,16 @@
-import { Activity, CalendarClock, LayoutGrid, LogOut, ShieldCheck, Users } from 'lucide-react';
+import {
+  Activity,
+  CalendarClock,
+  FileText,
+  LayoutGrid,
+  LogOut,
+  ShieldCheck,
+  Users,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { Logo } from '../components/Logo';
-import { SECURITY_PATH, useMe, useSignOut } from '../lib/auth';
+import { SECURITY_PATH, useIsAgency, useMe, useSignOut } from '../lib/auth';
 
 function useScrolled() {
   const [scrolled, setScrolled] = useState(false);
@@ -19,6 +27,8 @@ export function AppShell() {
   const scrolled = useScrolled();
   const { data: me } = useMe();
   const signOut = useSignOut();
+  const isAgency = useIsAgency();
+  const viewerClient = me?.membership?.role === 'client_viewer' ? me.membership.client : null;
 
   return (
     <div className="shell">
@@ -32,14 +42,25 @@ export function AppShell() {
             <NavLink to="/" end>
               <LayoutGrid size={16} /> Overview
             </NavLink>
-            <NavLink to="/clients">
-              <Users size={16} /> Clients
-            </NavLink>
+            {isAgency ? (
+              <NavLink to="/clients">
+                <Users size={16} /> Clients
+              </NavLink>
+            ) : (
+              viewerClient && (
+                <NavLink to={'/clients/' + viewerClient.id}>
+                  <Users size={16} /> {viewerClient.name}
+                </NavLink>
+              )
+            )}
             <NavLink to="/incidents">
               <Activity size={16} /> Incidents
             </NavLink>
             <NavLink to="/expirations">
               <CalendarClock size={16} /> Expiring soon
+            </NavLink>
+            <NavLink to="/reports">
+              <FileText size={16} /> Reports
             </NavLink>
           </nav>
         </div>
