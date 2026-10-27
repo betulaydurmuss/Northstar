@@ -85,10 +85,19 @@ export function reportsRouter(queue: ReportQueue) {
     });
     if (!client) throw new HttpError(404, 'Client not found');
 
+    // One render at a time per report: asking again while it is still being made does
+    // not start another headless browser. A job stuck for 15 minutes may be retried.
+    const existing = await prisma.report.findUnique({
+      where: { clientId_period: { clientId: client.id, period: body.period } },
+    });
+    if (existing?.status === 'queued' && Date.now() - existing.createdAt.getTime() < 15 * 60_000) {
+      res.status(202).json(existing);
+      return;
+    }
     const report = await prisma.report.upsert({
       where: { clientId_period: { clientId: client.id, period: body.period } },
       create: { clientId: client.id, period: body.period },
-      update: { status: 'queued', error: null },
+      update: { status: 'queued', error: null, createdAt: new Date() },
     });
     await queue.enqueue({ reportId: report.id, send: false });
     res.status(202).json(report);

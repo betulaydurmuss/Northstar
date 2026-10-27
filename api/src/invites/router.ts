@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import { requireAuth } from '../auth/middleware.js';
 import { hashPassword, passwordProblem } from '../auth/password.js';
@@ -18,8 +19,18 @@ const INVITE_TTL_MS = 72 * 3_600_000;
 export function invitesRouter(limits: AuthLimits) {
   const router = Router();
   const { perIp } = authLimiters(limits);
+  // Invitations send email from our domain with text the agency chose; keep that from
+  // becoming a way to send spam.
+  const perInviter = rateLimit({
+    windowMs: 3_600_000,
+    limit: 20,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { error: 'Too many invitations. Try again in an hour.' },
+    keyGenerator: (req) => `invite:${req.auth?.userId ?? ''}`,
+  });
 
-  router.post('/clients/:id/invite', requireAuth(), requireAgency, async (req, res) => {
+  router.post('/clients/:id/invite', requireAuth(), requireAgency, perInviter, async (req, res) => {
     const { email } = z
       .object({ email: z.string().trim().toLowerCase().email('Enter a valid email address') })
       .parse(req.body);
