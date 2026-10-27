@@ -2,9 +2,11 @@ import { createBrowserRouter } from 'react-router-dom';
 import { RequireAuth } from '../lib/auth';
 import { Brand } from '../pages/Brand';
 import { ForgotPassword } from '../pages/auth/ForgotPassword';
+import { ResetPassword } from '../pages/auth/ResetPassword';
 import { SignIn } from '../pages/auth/SignIn';
 import { SignUp } from '../pages/auth/SignUp';
 import { Overview } from '../pages/Overview';
+import { Security } from '../pages/settings/Security';
 import { Styleguide } from '../pages/Styleguide';
 import { AppShell } from './AppShell';
 import { PublicShell } from './PublicShell';
@@ -13,6 +15,7 @@ export const router = createBrowserRouter([
   { path: '/sign-in', element: <SignIn /> },
   { path: '/sign-up', element: <SignUp /> },
   { path: '/forgot-password', element: <ForgotPassword /> },
+  { path: '/reset-password', element: <ResetPassword /> },
   {
     element: <PublicShell />,
     children: [
@@ -25,7 +28,10 @@ export const router = createBrowserRouter([
     children: [
       {
         element: <AppShell />,
-        children: [{ path: '/', element: <Overview /> }],
+        children: [
+          { path: '/', element: <Overview /> },
+          { path: '/settings/security', element: <Security /> },
+        ],
       },
     ],
   },

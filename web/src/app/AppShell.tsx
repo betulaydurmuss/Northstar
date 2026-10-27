@@ -1,8 +1,8 @@
-import { Activity, LayoutGrid, Settings } from 'lucide-react';
+import { LayoutGrid, LogOut, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { Logo } from '../components/Logo';
-import { useMe } from '../lib/auth';
+import { SECURITY_PATH, useMe, useSignOut } from '../lib/auth';
 
 function useScrolled() {
   const [scrolled, setScrolled] = useState(false);
@@ -18,6 +18,7 @@ function useScrolled() {
 export function AppShell() {
   const scrolled = useScrolled();
   const { data: me } = useMe();
+  const signOut = useSignOut();
 
   return (
     <div className="shell">
@@ -31,11 +32,13 @@ export function AppShell() {
             <NavLink to="/" end>
               <LayoutGrid size={16} /> Overview
             </NavLink>
-            <NavLink to="/incidents">
-              <Activity size={16} /> Incidents
-            </NavLink>
-            <NavLink to="/settings">
-              <Settings size={16} /> Settings
+          </nav>
+        </div>
+        <div>
+          <div className="nav-label">Account</div>
+          <nav className="nav">
+            <NavLink to={SECURITY_PATH}>
+              <ShieldCheck size={16} /> Security
             </NavLink>
           </nav>
         </div>
@@ -43,9 +46,14 @@ export function AppShell() {
       <div className="main">
         <header className={`topbar${scrolled ? ' scrolled' : ''}`}>
           <span className="muted">{me?.name}</span>
-          <span className="muted mono" style={{ fontSize: 'var(--text-xs)' }}>
-            {me?.email}
-          </span>
+          <div className="row" style={{ gap: 4 }}>
+            <span className="muted mono" style={{ fontSize: 'var(--text-xs)' }}>
+              {me?.email}
+            </span>
+            <button className="btn btn-ghost" onClick={signOut} aria-label="Sign out">
+              <LogOut size={16} />
+            </button>
+          </div>
         </header>
         <main className="content">
           <Outlet />
