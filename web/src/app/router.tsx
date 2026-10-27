@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router-dom';
-import { RequireAuth } from '../lib/auth';
+import { HomeOrAdmin, RequireAdmin, RequireAuth } from '../lib/auth';
+import { AdminAudit, AdminPlans, AdminSystem, AdminUsers } from '../pages/admin/Admin';
 import { Brand } from '../pages/Brand';
 import { ForgotPassword } from '../pages/auth/ForgotPassword';
 import { ResetPassword } from '../pages/auth/ResetPassword';
@@ -54,7 +55,14 @@ const appRouter = () =>
         {
           element: <AppShell />,
           children: [
-            { path: '/', element: <Overview /> },
+            {
+              path: '/',
+              element: (
+                <HomeOrAdmin>
+                  <Overview />
+                </HomeOrAdmin>
+              ),
+            },
             { path: '/monitors/new', element: <NewMonitor /> },
             { path: '/monitors/import', element: <Import /> },
             { path: '/monitors/:id/edit', element: <EditMonitor /> },
@@ -70,6 +78,15 @@ const appRouter = () =>
             { path: '/clients/:id', element: <ClientDetail /> },
             { path: '/clients/:id/status-page', element: <StatusPageEditor /> },
             { path: '/reports', element: <Reports /> },
+            {
+              element: <RequireAdmin />,
+              children: [
+                { path: '/admin/users', element: <AdminUsers /> },
+                { path: '/admin/system', element: <AdminSystem /> },
+                { path: '/admin/audit', element: <AdminAudit /> },
+                { path: '/admin/plans', element: <AdminPlans /> },
+              ],
+            },
             { path: '/expirations', element: <Expirations /> },
             { path: '/settings/security', element: <Security /> },
           ],

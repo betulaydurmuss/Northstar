@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
 import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { api, refreshSession, setAccessToken } from './api';
 
@@ -60,6 +61,20 @@ export function useSignOut() {
     qc.setQueryData(['me'], null);
     navigate('/sign-in', { replace: true });
   };
+}
+
+// The admin panel. The api enforces this too; here it only keeps others off the pages.
+export function RequireAdmin() {
+  const { data: me } = useMe();
+  if (me?.role !== 'super_admin') return <Navigate to="/" replace />;
+  return <Outlet />;
+}
+
+// A platform admin with no agency has nothing to monitor; their home is the admin panel.
+export function HomeOrAdmin({ children }: { children: ReactNode }) {
+  const { data: me } = useMe();
+  if (me?.role === 'super_admin' && !me.membership) return <Navigate to="/admin/users" replace />;
+  return children;
 }
 
 export function RequireAuth() {

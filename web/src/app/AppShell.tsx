@@ -2,7 +2,11 @@ import {
   Activity,
   CalendarClock,
   FileText,
+  Gauge,
   LayoutGrid,
+  ListChecks,
+  Package,
+  UserCog,
   LogOut,
   ShieldCheck,
   Users,
@@ -36,34 +40,55 @@ export function AppShell() {
         <div className="sidebar-brand">
           <Logo />
         </div>
-        <div>
-          <div className="nav-label">Monitoring</div>
-          <nav className="nav">
-            <NavLink to="/" end>
-              <LayoutGrid size={16} /> Overview
-            </NavLink>
-            {isAgency ? (
-              <NavLink to="/clients">
-                <Users size={16} /> Clients
+        {me?.membership && (
+          <div>
+            <div className="nav-label">Monitoring</div>
+            <nav className="nav">
+              <NavLink to="/" end>
+                <LayoutGrid size={16} /> Overview
               </NavLink>
-            ) : (
-              viewerClient && (
-                <NavLink to={'/clients/' + viewerClient.id}>
-                  <Users size={16} /> {viewerClient.name}
+              {isAgency ? (
+                <NavLink to="/clients">
+                  <Users size={16} /> Clients
                 </NavLink>
-              )
-            )}
-            <NavLink to="/incidents">
-              <Activity size={16} /> Incidents
-            </NavLink>
-            <NavLink to="/expirations">
-              <CalendarClock size={16} /> Expiring soon
-            </NavLink>
-            <NavLink to="/reports">
-              <FileText size={16} /> Reports
-            </NavLink>
-          </nav>
-        </div>
+              ) : (
+                viewerClient && (
+                  <NavLink to={'/clients/' + viewerClient.id}>
+                    <Users size={16} /> {viewerClient.name}
+                  </NavLink>
+                )
+              )}
+              <NavLink to="/incidents">
+                <Activity size={16} /> Incidents
+              </NavLink>
+              <NavLink to="/expirations">
+                <CalendarClock size={16} /> Expiring soon
+              </NavLink>
+              <NavLink to="/reports">
+                <FileText size={16} /> Reports
+              </NavLink>
+            </nav>
+          </div>
+        )}
+        {me?.role === 'super_admin' && (
+          <div>
+            <div className="nav-label">Admin</div>
+            <nav className="nav">
+              <NavLink to="/admin/users">
+                <UserCog size={16} /> Users
+              </NavLink>
+              <NavLink to="/admin/system">
+                <Gauge size={16} /> System health
+              </NavLink>
+              <NavLink to="/admin/audit">
+                <ListChecks size={16} /> Audit log
+              </NavLink>
+              <NavLink to="/admin/plans">
+                <Package size={16} /> Plans
+              </NavLink>
+            </nav>
+          </div>
+        )}
         <div>
           <div className="nav-label">Account</div>
           <nav className="nav">
