@@ -2,6 +2,7 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { type RequestHandler } from 'express';
 import helmet from 'helmet';
+import { bullProbe, type SystemProbe } from './admin/probe.js';
 import { adminRouter } from './admin/router.js';
 import { authRouter } from './auth/router.js';
 import { defaultAuthLimits, type AuthLimits } from './auth/rate-limit.js';
@@ -33,6 +34,7 @@ type AppOptions = {
   authLimits?: AuthLimits;
   scheduler?: CheckScheduler;
   reportQueue?: ReportQueue;
+  probe?: SystemProbe;
 };
 
 // Built separately from server.ts so tests can drive the app without opening a port.
@@ -64,7 +66,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/reports', reportsRouter(options.reportQueue ?? bullReportQueue(config.REDIS_URL)));
   app.use('/api', expirationsRouter());
   app.use('/api', invitesRouter(options.authLimits ?? defaultAuthLimits));
-  app.use('/api/admin', adminRouter());
+  app.use('/api/admin', adminRouter(options.probe ?? bullProbe(config.REDIS_URL)));
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Not found' });

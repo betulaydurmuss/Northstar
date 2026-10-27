@@ -75,19 +75,24 @@ enum ChannelType {
 }
 
 model User {
-  id           String    @id @default(uuid()) @db.Uuid
-  email        String    @unique
-  name         String
-  passwordHash String    @map("password_hash")
-  role         Role      @default(user)
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique
+  name          String
+  passwordHash  String    @map("password_hash")
+  role          Role      @default(user)
   // Encrypted with the server key; never sent to the browser.
-  totpSecret   String?   @map("totp_secret")
-  totpEnabled  Boolean   @default(false) @map("totp_enabled")
+  totpSecret    String?   @map("totp_secret")
+  totpEnabled   Boolean   @default(false) @map("totp_enabled")
+  // Start (epoch seconds) of the last time step a code was accepted for. A code is only
+  // accepted for a later step, so an intercepted code cannot be replayed.
+  totpLastEpoch Int?      @map("totp_last_epoch")
   // SHA-256 of each unused one-time backup code. A used code is removed from the list.
-  backupCodes  String[]  @map("backup_code_hashes")
-  failedLogins Int       @default(0) @map("failed_logins")
-  lockedUntil  DateTime? @map("locked_until")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  backupCodes   String[]  @map("backup_code_hashes")
+  failedLogins  Int       @default(0) @map("failed_logins")
+  lockedUntil   DateTime? @map("locked_until")
+  // Set by a platform admin. A suspended account cannot sign in and its sessions end.
+  suspendedAt   DateTime? @map("suspended_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
 
   sessions             Session[]
   membership           Membership?
@@ -142,6 +147,7 @@ model Organization {
   plan      String   @default("starter")
   createdAt DateTime @default(now()) @map("created_at")
 
+  planLimits  Plan         @relation(fields: [plan], references: [id])
   clients     Client[]
   memberships Membership[]
   monitors    Monitor[]
@@ -346,9 +352,12 @@ model NotificationChannel {
 model AuditLog {
   id        BigInt   @id @default(autoincrement())
   actorId   String?  @map("actor_id") @db.Uuid
+  // A dotted verb such as user.suspend or plan.update.
   action    String
   target    String?
   ip        String?
+  // What changed, for actions where the target alone does not say.
+  details   Json?
   createdAt DateTime @default(now()) @map("created_at")
 
   actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
@@ -359,15 +368,17 @@ model AuditLog {
 
 // A client's public status page. Its logo and colour come from the client.
 model StatusPage {
-  id           String   @id @default(uuid()) @db.Uuid
-  clientId     String   @unique @map("client_id") @db.Uuid
-  slug         String   @unique
-  title        String
-  isPublic     Boolean  @default(true) @map("is_public")
+  id               String    @id @default(uuid()) @db.Uuid
+  clientId         String    @unique @map("client_id") @db.Uuid
+  slug             String    @unique
+  title            String
+  isPublic         Boolean   @default(true) @map("is_public")
   // status.client.com, pointed at us with a CNAME.
-  customDomain String?  @unique @map("custom_domain")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  customDomain     String?   @unique @map("custom_domain")
+  // Set once a TXT record proves the agency controls the domain; cleared when it changes.
+  domainVerifiedAt DateTime? @map("domain_verified_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   client   Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
   monitors StatusPageMonitor[]
@@ -451,4 +462,16 @@ model Invite {
 
   @@index([clientId])
   @@map("invites")
+}
+
+// What an agency on each plan may have. Platform admins edit these in the admin panel.
+model Plan {
+  id          String @id
+  name        String
+  maxMonitors Int    @map("max_monitors")
+  maxClients  Int    @map("max_clients")
+
+  organizations Organization[]
+
+  @@map("plans")
 }

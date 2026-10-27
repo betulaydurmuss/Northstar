@@ -4,6 +4,8 @@ import { prisma } from '../db.js';
 import { HttpError } from '../http.js';
 import { verifyAccessToken, type AccessClaims } from './tokens.js';
 
+export const SUSPENDED = 'This account has been suspended. Contact the Northstar team.';
+
 export type Auth = {
   userId: string;
   sessionId: string;
@@ -40,13 +42,18 @@ export function requireAuth(options: Options = {}): RequestHandler {
         revokedAt: true,
         expiresAt: true,
         user: {
-          select: { membership: { select: { organizationId: true, role: true, clientId: true } } },
+          select: {
+            suspendedAt: true,
+            membership: { select: { organizationId: true, role: true, clientId: true } },
+          },
         },
       },
     });
     if (!session || session.revokedAt || session.expiresAt < new Date()) {
       throw new HttpError(401, 'Sign in to continue');
     }
+
+    if (session.user.suspendedAt) throw new HttpError(403, SUSPENDED);
 
     if (claims.role === 'super_admin' && !claims.mfa && !options.allowPendingMfa) {
       throw new HttpError(403, 'Set up two-factor authentication to continue');

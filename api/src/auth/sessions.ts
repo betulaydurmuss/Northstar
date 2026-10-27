@@ -64,7 +64,7 @@ export async function rotateSession(presented: string, req: Request): Promise<Ro
     include: { user: true },
   });
 
-  if (session && !session.revokedAt && session.expiresAt > now) {
+  if (session && !session.revokedAt && session.expiresAt > now && !session.user.suspendedAt) {
     // The where clause on the old hash makes this a compare-and-swap: if another request
     // rotated first, nothing is updated and this request falls through as a replay.
     const { count } = await prisma.session.updateMany({
