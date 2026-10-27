@@ -8,6 +8,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { api, ApiError } from '../../lib/api';
 import { useIsAgency } from '../../lib/auth';
 import { useClient, type Client } from '../../lib/clients';
+import { Invite, Maintenance, StatusPageCard } from './ClientSections';
 import { formatUptime, timeAgo } from '../../lib/format';
 import { useMonitors } from '../../lib/monitors';
 
@@ -274,6 +275,9 @@ export function ClientDetail() {
           <h2 style={{ fontSize: 'var(--text-lg)' }}>Monitors</h2>
           <ClientMonitors clientId={id} />
         </section>
+        <StatusPageCard clientId={id} canEdit={isAgency} />
+        <Maintenance clientId={id} canEdit={isAgency} />
+        {isAgency && <Invite clientId={id} clientName={c.name} />}
         {isAgency && <Settings client={c} />}
       </div>
     </>
