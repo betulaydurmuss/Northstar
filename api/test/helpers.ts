@@ -13,7 +13,7 @@ export function testApp(limits = { perIp: 1000, perAccount: 1000 }) {
 
 export async function resetDb() {
   await prisma.$executeRawUnsafe(
-    'TRUNCATE users, sessions, password_reset_tokens, monitors, audit_logs RESTART IDENTITY CASCADE',
+    'TRUNCATE users, sessions, password_reset_tokens, monitors, check_results_hourly, audit_logs RESTART IDENTITY CASCADE',
   );
 }
 

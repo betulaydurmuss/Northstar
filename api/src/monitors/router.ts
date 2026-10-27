@@ -14,6 +14,11 @@ import { config } from '../config.js';
 import { prisma } from '../db.js';
 import { HttpError } from '../http.js';
 import type { CheckScheduler } from './scheduler.js';
+import { last24Hours, monitorSeries, monitorStats, RANGES, type Range } from './stats.js';
+
+const rangeQuery = z.object({
+  range: z.enum(Object.keys(RANGES) as [Range, ...Range[]]).default('24h'),
+});
 
 function hostOf(m: Pick<MonitorInput, 'type' | 'target'>) {
   return m.type === 'http' ? parseHttpTarget(m.target)!.hostname : parsePingTarget(m.target)!.host;
@@ -77,7 +82,45 @@ export function monitorsRouter(scheduler: CheckScheduler) {
       where: { ownerId: req.auth!.userId },
       orderBy: { name: 'asc' },
     });
-    res.json(monitors.map(serialize));
+    const recent = await last24Hours(monitors.map((m) => m.id));
+    res.json(
+      monitors.map((m) => ({
+        ...serialize(m),
+        last24h: recent.get(m.id)?.cells ?? [],
+        uptime24h: recent.get(m.id)?.uptime ?? null,
+      })),
+    );
+  });
+
+  router.get('/:id/stats', async (req, res) => {
+    const monitor = await findOwned(req);
+    const { range } = rangeQuery.parse(req.query);
+    res.json(await monitorStats(monitor.id, range));
+  });
+
+  router.get('/:id/series', async (req, res) => {
+    const monitor = await findOwned(req);
+    const { range } = rangeQuery.parse(req.query);
+    res.json(await monitorSeries(monitor.id, range));
+  });
+
+  // Raw checks, newest first. Older than seven days they have been rolled up, so the
+  // window is capped there.
+  router.get('/:id/checks', async (req, res) => {
+    const monitor = await findOwned(req);
+    const q = z
+      .object({
+        from: z.coerce.date().optional(),
+        to: z.coerce.date().optional(),
+        limit: z.coerce.number().int().min(1).max(500).default(50),
+      })
+      .parse(req.query);
+    const checks = await prisma.checkResult.findMany({
+      where: { monitorId: monitor.id, checkedAt: { gte: q.from, lte: q.to } },
+      orderBy: { checkedAt: 'desc' },
+      take: q.limit,
+    });
+    res.json(checks.map((c) => ({ ...c, id: c.id.toString() })));
   });
 
   router.post('/', async (req, res) => {

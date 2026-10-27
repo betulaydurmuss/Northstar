@@ -112,6 +112,7 @@ model Monitor {
 
   owner     User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   checks    CheckResult[]
+  hourly    CheckHourly[]
   incidents Incident[]
 
   @@index([ownerId])
@@ -132,6 +133,24 @@ model CheckResult {
   // Every chart and uptime figure reads one monitor over a time range.
   @@index([monitorId, checkedAt])
   @@map("check_results")
+}
+
+// Checks older than seven days, folded into one row per monitor per hour by the nightly
+// rollup. Uptime stays exact (counts are summed); percentiles become approximate.
+model CheckHourly {
+  monitorId  String   @map("monitor_id") @db.Uuid
+  hour       DateTime
+  upCount    Int      @map("up_count")
+  totalCount Int      @map("total_count")
+  // Mean and 95th percentile of the response times measured in that hour, and how many.
+  avgMs      Float?   @map("avg_ms")
+  p95Ms      Float?   @map("p95_ms")
+  msCount    Int      @default(0) @map("ms_count")
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@id([monitorId, hour])
+  @@map("check_results_hourly")
 }
 
 model Incident {
