@@ -14,6 +14,7 @@ import { requireAuth } from '../auth/middleware.js';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
 import { HttpError } from '../http.js';
+import { assertMonitorRoom, createWithinLimits } from '../limits.js';
 import { requireAgency, scoped, tenant } from '../tenancy.js';
 import { importRouter } from './import.js';
 import type { CheckScheduler } from './scheduler.js';
@@ -154,10 +155,15 @@ export function monitorsRouter(scheduler: CheckScheduler) {
     const { organizationId } = tenant(req);
     await assertClientInOrganization(input.clientId, organizationId);
     await assertReachable(input);
-    const monitor = await prisma.monitor.create({
-      data: { ...input, ownerId: req.auth!.userId, organizationId },
-      include: withClient,
-    });
+    const monitor = await createWithinLimits(
+      organizationId,
+      (tx) => assertMonitorRoom(tx, organizationId),
+      (tx) =>
+        tx.monitor.create({
+          data: { ...input, ownerId: req.auth!.userId, organizationId },
+          include: withClient,
+        }),
+    );
     await scheduler.schedule(monitor);
     res.status(201).json(serialize(monitor));
   });

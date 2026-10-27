@@ -7,6 +7,7 @@ import { requireAuth } from '../auth/middleware.js';
 import { prisma } from '../db.js';
 import { deleteLogo, logoUrl, MAX_LOGO_BYTES, saveLogo } from '../files.js';
 import { HttpError } from '../http.js';
+import { assertClientRoom, createWithinLimits } from '../limits.js';
 import { requireAgency, scopedClients, tenant } from '../tenancy.js';
 
 const clientInput = z.object({
@@ -119,10 +120,13 @@ export function clientsRouter() {
 
   router.post('/', requireAgency, async (req, res) => {
     const input = clientInput.parse(req.body);
+    const { organizationId } = tenant(req);
     try {
-      const client = await prisma.client.create({
-        data: { ...input, organizationId: tenant(req).organizationId },
-      });
+      const client = await createWithinLimits(
+        organizationId,
+        (tx) => assertClientRoom(tx, organizationId),
+        (tx) => tx.client.create({ data: { ...input, organizationId } }),
+      );
       res.status(201).json(serialize(client));
     } catch (err) {
       if (nameTaken(err)) throw new HttpError(409, 'A client with this name already exists');

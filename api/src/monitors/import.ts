@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { config } from '../config.js';
 import { prisma } from '../db.js';
 import { HttpError } from '../http.js';
+import { assertClientRoom, assertMonitorRoom, lockOrganization } from '../limits.js';
 import { requireAgency, tenant } from '../tenancy.js';
 import type { CheckScheduler } from './scheduler.js';
 
@@ -212,6 +213,14 @@ export function importRouter(scheduler: CheckScheduler) {
     }
 
     const created = await prisma.$transaction(async (tx) => {
+      // Limits are checked under the organization lock, together with the inserts.
+      await lockOrganization(tx, organizationId);
+      await assertMonitorRoom(tx, organizationId, checked.length);
+      await assertClientRoom(
+        tx,
+        organizationId,
+        new Set(checked.filter((r) => r.newClient).map((r) => r.client.toLowerCase())).size,
+      );
       const clients = new Map<string, string>();
       for (const c of await tx.client.findMany({ where: { organizationId } })) {
         clients.set(c.name.toLowerCase(), c.id);
