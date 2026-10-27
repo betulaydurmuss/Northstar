@@ -8,7 +8,12 @@ export const MAINTENANCE_QUEUE = 'maintenance';
 // One repeating job per monitor. A stable id means re-registering is idempotent.
 export const schedulerId = (monitorId: string) => `monitor:${monitorId}`;
 
+export const REPORTS_QUEUE = 'reports';
+
 export type CheckJob = { monitorId: string };
+
+// Render one client's monthly report to PDF, and email it when `send` is set.
+export type ReportJob = { reportId: string; send: boolean };
 
 export type NotificationJob = {
   kind: 'incident-opened' | 'incident-resolved';

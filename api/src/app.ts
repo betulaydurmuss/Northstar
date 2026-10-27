@@ -12,8 +12,12 @@ import { filesRouter } from './files.js';
 import { healthRouter } from './health.js';
 import { errorHandler, HttpError } from './http.js';
 import { incidentsRouter } from './incidents/router.js';
+import { invitesRouter } from './invites/router.js';
+import { incidentUpdatesRouter, maintenanceRouter } from './maintenance/router.js';
 import { monitorsRouter } from './monitors/router.js';
 import { bullScheduler, type CheckScheduler } from './monitors/scheduler.js';
+import { bullReportQueue, reportsRouter, type ReportQueue } from './reports/router.js';
+import { publicRouter, statusPagesRouter } from './status-pages/router.js';
 
 // Browsers only send a custom header cross-origin after a CORS preflight, which our
 // CORS policy refuses for any origin but our own. Requiring it on every state-changing
@@ -25,7 +29,11 @@ const csrfGuard: RequestHandler = (req, _res, next) => {
   next();
 };
 
-type AppOptions = { authLimits?: AuthLimits; scheduler?: CheckScheduler };
+type AppOptions = {
+  authLimits?: AuthLimits;
+  scheduler?: CheckScheduler;
+  reportQueue?: ReportQueue;
+};
 
 // Built separately from server.ts so tests can drive the app without opening a port.
 export function createApp(options: AppOptions = {}) {
@@ -42,12 +50,20 @@ export function createApp(options: AppOptions = {}) {
 
   app.use('/api/health', healthRouter);
   app.use('/api/files', filesRouter());
+  // Status pages are public and may be served from a client's own domain, so any origin
+  // may read them. They carry no cookies and change nothing.
+  app.use('/api/public', cors({ origin: '*' }), publicRouter());
   app.use('/api', csrfGuard);
   app.use('/api/auth', authRouter(options.authLimits ?? defaultAuthLimits));
   app.use('/api/monitors', monitorsRouter(options.scheduler ?? bullScheduler(config.REDIS_URL)));
   app.use('/api/clients', clientsRouter());
   app.use('/api/incidents', incidentsRouter());
+  app.use('/api/incidents', incidentUpdatesRouter());
+  app.use('/api/status-pages', statusPagesRouter());
+  app.use('/api/maintenance-windows', maintenanceRouter());
+  app.use('/api/reports', reportsRouter(options.reportQueue ?? bullReportQueue(config.REDIS_URL)));
   app.use('/api', expirationsRouter());
+  app.use('/api', invitesRouter(options.authLimits ?? defaultAuthLimits));
   app.use('/api/admin', adminRouter());
 
   app.use('/api', (_req, res) => {

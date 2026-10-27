@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { defineConfig } from 'vitest/config';
 
 // Tests run against a real Postgres, in a database of their own so they never touch
@@ -12,6 +14,8 @@ export default defineConfig({
     fileParallelism: false,
     env: {
       NODE_ENV: 'test',
+      // Uploaded logos and report files from tests never land in the real storage folder.
+      STORAGE_DIR: join(tmpdir(), 'northstar-test-storage'),
       DATABASE_URL: databaseUrl,
       JWT_SECRET: 'test-secret-that-is-long-enough-to-sign-tokens',
       ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
