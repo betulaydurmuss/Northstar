@@ -1,0 +1,154 @@
+// Tables and columns are snake_case in Postgres and camelCase in TypeScript.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  user
+  super_admin
+}
+
+enum MonitorType {
+  http
+  ping
+}
+
+// What the dashboard shows. `pending` means the monitor has never been checked.
+enum MonitorState {
+  pending
+  up
+  down
+  paused
+}
+
+enum CheckStatus {
+  up
+  down
+}
+
+enum ChannelType {
+  email
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  name         String
+  passwordHash String    @map("password_hash")
+  role         Role      @default(user)
+  // Encrypted with the server key; never sent to the browser.
+  totpSecret   String?   @map("totp_secret")
+  failedLogins Int       @default(0) @map("failed_logins")
+  lockedUntil  DateTime? @map("locked_until")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  sessions             Session[]
+  monitors             Monitor[]
+  notificationChannels NotificationChannel[]
+  auditLogs            AuditLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  // Only a hash is stored, so a database leak does not hand out live sessions.
+  refreshTokenHash String    @unique @map("refresh_token_hash")
+  ip               String?
+  userAgent        String?   @map("user_agent")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  lastUsedAt       DateTime  @default(now()) @map("last_used_at")
+  expiresAt        DateTime  @map("expires_at")
+  revokedAt        DateTime? @map("revoked_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Monitor {
+  id            String       @id @default(uuid()) @db.Uuid
+  ownerId       String       @map("owner_id") @db.Uuid
+  name          String
+  type          MonitorType  @default(http)
+  target        String
+  intervalSec   Int          @default(60) @map("interval_sec")
+  timeoutMs     Int          @default(10000) @map("timeout_ms")
+  retries       Int          @default(2)
+  isActive      Boolean      @default(true) @map("is_active")
+  state         MonitorState @default(pending)
+  lastCheckedAt DateTime?    @map("last_checked_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  owner     User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  checks    CheckResult[]
+  incidents Incident[]
+
+  @@index([ownerId])
+  @@map("monitors")
+}
+
+model CheckResult {
+  id         BigInt      @id @default(autoincrement())
+  monitorId  String      @map("monitor_id") @db.Uuid
+  status     CheckStatus
+  responseMs Int?        @map("response_ms")
+  statusCode Int?        @map("status_code")
+  error      String?
+  checkedAt  DateTime    @default(now()) @map("checked_at")
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  // Every chart and uptime figure reads one monitor over a time range.
+  @@index([monitorId, checkedAt])
+  @@map("check_results")
+}
+
+model Incident {
+  id         String    @id @default(uuid()) @db.Uuid
+  monitorId  String    @map("monitor_id") @db.Uuid
+  startedAt  DateTime  @default(now()) @map("started_at")
+  resolvedAt DateTime? @map("resolved_at")
+  cause      String
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@index([monitorId, startedAt])
+  @@map("incidents")
+}
+
+model NotificationChannel {
+  id        String      @id @default(uuid()) @db.Uuid
+  ownerId   String      @map("owner_id") @db.Uuid
+  type      ChannelType
+  // Encrypted JSON: addresses and tokens are unreadable without the server key.
+  config    String
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@map("notification_channels")
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  actorId   String?  @map("actor_id") @db.Uuid
+  action    String
+  target    String?
+  ip        String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@map("audit_logs")
+}
