@@ -66,7 +66,9 @@ export function SignIn() {
           </button>
         }
       >
-        <form onSubmit={onCode}>
+        {/* A key of its own, so React builds a fresh input instead of reusing the email
+            field from the previous step (which would carry the address into the code box). */}
+        <form key="code" onSubmit={onCode}>
           <div className="field">
             <label htmlFor="code">Code</label>
             <input
@@ -102,7 +104,7 @@ export function SignIn() {
         </>
       }
     >
-      <form onSubmit={onPassword}>
+      <form key="password" onSubmit={onPassword}>
         <div className="field">
           <label htmlFor="email">Email</label>
           <input
