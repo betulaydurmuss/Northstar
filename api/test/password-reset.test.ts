@@ -66,4 +66,25 @@ describe('password reset', () => {
     });
     expect(again.status).toBe(400);
   });
+
+  it('works only once even when used twice at the same moment, and cancels other links', async () => {
+    await createUser();
+    await post(app, '/api/auth/forgot-password').send({ email: 'mira@brightline.studio' });
+    const older = tokenFromLastEmail();
+    await post(app, '/api/auth/forgot-password').send({ email: 'mira@brightline.studio' });
+    const token = tokenFromLastEmail();
+
+    const results = await Promise.all(
+      ['quiet-tide-over-the-harbour', 'another-calm-evening-sky'].map((password) =>
+        post(app, '/api/auth/reset-password').send({ token, password }),
+      ),
+    );
+    expect(results.map((r) => r.status).sort()).toEqual([204, 400]);
+
+    const viaOlder = await post(app, '/api/auth/reset-password').send({
+      token: older,
+      password: 'a-third-quiet-password',
+    });
+    expect(viaOlder.status).toBe(400);
+  });
 });

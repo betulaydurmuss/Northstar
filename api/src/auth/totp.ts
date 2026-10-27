@@ -11,10 +11,13 @@ export function totpUri(email: string, secret: string) {
 }
 
 // Accept the previous and next 30-second step as well, for phones whose clocks drift.
-export async function checkTotp(secret: string, code: string) {
-  if (!/^\d{6}$/.test(code)) return false;
+// Returns the start of the time step the code belongs to, or null when it is wrong, so
+// the caller can refuse a code for a step that was already used.
+export async function checkTotp(secret: string, code: string): Promise<number | null> {
+  if (!/^\d{6}$/.test(code)) return null;
   const result = await verify({ secret, token: code, epochTolerance: 30 });
-  return result.valid;
+  // The functional verify is typed for HOTP too, which has no epoch; TOTP always sets it.
+  return result.valid && 'epoch' in result ? result.epoch : null;
 }
 
 // Ten codes like "k7qp-2mxd-9tfa", shown once and stored only as hashes.

@@ -159,21 +159,36 @@ function TwoFactor({ me }: { me: Me }) {
         <ShieldAlert size={20} color="var(--warn)" aria-hidden="true" />
         <h3>Two-factor authentication is off</h3>
       </div>
-      <p className="muted">
-        {me.twoFactorSetupRequired
-          ? 'Admin accounts must use two-factor authentication. Set it up to continue.'
-          : 'Add a second step to signing in, so a leaked password alone is not enough.'}
-      </p>
-      {error && <ErrorState message={error} />}
-      <div>
-        <button
-          className="btn btn-primary"
-          onClick={() => start.mutate()}
-          disabled={start.isPending}
-        >
-          Set up two-factor
-        </button>
-      </div>
+      {me.role === 'super_admin' ? (
+        // Admins are never enrolled from the browser; see api/src/auth/admin-totp.ts.
+        <>
+          <p className="muted">
+            Admin accounts must use two-factor authentication, and it is set up on the server so
+            that a password alone can never claim an admin account. Someone with access to the
+            server runs:
+          </p>
+          <code className="card card-raised" style={{ padding: 12 }}>
+            npm run admin:create -- {me.email}
+          </code>
+          <p className="muted">Then sign in again with the code from your authenticator app.</p>
+        </>
+      ) : (
+        <>
+          <p className="muted">
+            Add a second step to signing in, so a leaked password alone is not enough.
+          </p>
+          {error && <ErrorState message={error} />}
+          <div>
+            <button
+              className="btn btn-primary"
+              onClick={() => start.mutate()}
+              disabled={start.isPending}
+            >
+              Set up two-factor
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

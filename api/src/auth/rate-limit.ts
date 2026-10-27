@@ -1,4 +1,5 @@
 import { rateLimit } from 'express-rate-limit';
+import { decodeJwt } from 'jose';
 
 export type AuthLimits = {
   // Sign-in attempts per minute from one IP address.
@@ -33,5 +34,22 @@ export function authLimiters(limits: AuthLimits) {
     },
   });
 
-  return { perIp, perAccount };
+  // Two-factor codes, per account. The challenge is only decoded here to find whose it
+  // is; it is verified properly in the route. A forged one only lands in its own bucket.
+  const perChallengeAccount = rateLimit({
+    windowMs: 60_000,
+    limit: limits.perAccount,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: tooMany,
+    keyGenerator: (req) => {
+      try {
+        return `2fa:${decodeJwt(String(req.body?.challenge)).sub ?? ''}`;
+      } catch {
+        return '2fa:invalid';
+      }
+    },
+  });
+
+  return { perIp, perAccount, perChallengeAccount };
 }

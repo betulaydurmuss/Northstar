@@ -63,3 +63,9 @@ export function refreshCookie(res: request.Response) {
 export function totpNow(secret: string) {
   return generate({ secret });
 }
+
+// The code for the next 30-second step. Each step is accepted once, so a test that has
+// already spent the current code uses this one.
+export function totpNext(secret: string) {
+  return generate({ secret, epoch: Math.floor(Date.now() / 1000) + 30 });
+}
