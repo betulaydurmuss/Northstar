@@ -5,7 +5,10 @@ import helmet from 'helmet';
 import { adminRouter } from './admin/router.js';
 import { authRouter } from './auth/router.js';
 import { defaultAuthLimits, type AuthLimits } from './auth/rate-limit.js';
+import { clientsRouter } from './clients/router.js';
 import { config } from './config.js';
+import { expirationsRouter } from './expirations/router.js';
+import { filesRouter } from './files.js';
 import { healthRouter } from './health.js';
 import { errorHandler, HttpError } from './http.js';
 import { incidentsRouter } from './incidents/router.js';
@@ -32,14 +35,19 @@ export function createApp(options: AppOptions = {}) {
 
   app.use(helmet());
   app.use(cors({ origin: config.WEB_ORIGIN, credentials: true }));
+  // A CSV of 500 sites is larger than any other request; only the import routes accept it.
+  app.use('/api/monitors/import', express.json({ limit: '2mb' }));
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
 
   app.use('/api/health', healthRouter);
+  app.use('/api/files', filesRouter());
   app.use('/api', csrfGuard);
   app.use('/api/auth', authRouter(options.authLimits ?? defaultAuthLimits));
   app.use('/api/monitors', monitorsRouter(options.scheduler ?? bullScheduler(config.REDIS_URL)));
+  app.use('/api/clients', clientsRouter());
   app.use('/api/incidents', incidentsRouter());
+  app.use('/api', expirationsRouter());
   app.use('/api/admin', adminRouter());
 
   app.use('/api', (_req, res) => {

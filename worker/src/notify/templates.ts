@@ -24,6 +24,7 @@ function layout(opts: {
   heading: string;
   rows: [string, string][];
   link: string;
+  footer?: string;
 }) {
   const rows = opts.rows
     .map(
@@ -41,7 +42,7 @@ function layout(opts: {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>
 <a href="${escape(opts.link)}" style="display:inline-block;margin-top:20px;padding:10px 16px;background:#4F46E5;color:#ffffff;text-decoration:none;border-radius:6px;font-size:14px;font-weight:500">Open in Northstar</a>
 </td></tr></table>
-<p style="color:#8a90a8;font-size:12px;margin-top:16px">You are receiving this because you own this monitor in Northstar.</p>
+<p style="color:#8a90a8;font-size:12px;margin-top:16px">${escape(opts.footer ?? 'You are receiving this because you own this monitor in Northstar.')}</p>
 </td></tr></table></body></html>`;
 }
 
@@ -85,6 +86,36 @@ export function upEmail(monitor: Monitor, incident: Incident, link: string) {
     heading: `${monitor.name} is back up`,
     rows,
     link,
+  });
+  return { subject, text, html };
+}
+
+export function expiryEmail(opts: {
+  kind: 'certificate' | 'domain';
+  label: string;
+  expiresAt: Date;
+  daysLeft: number;
+  link: string;
+}) {
+  const what = opts.kind === 'certificate' ? 'TLS certificate' : 'domain registration';
+  const when =
+    opts.daysLeft <= 0
+      ? 'has expired'
+      : `expires in ${opts.daysLeft} day${opts.daysLeft === 1 ? '' : 's'}`;
+  const subject = `${opts.daysLeft <= 0 ? 'Expired' : 'Expiring'}: ${opts.label} ${what}`;
+  const rows: [string, string][] = [
+    [opts.kind === 'certificate' ? 'Monitor' : 'Domain', opts.label],
+    ['Expires', opts.expiresAt.toUTCString()],
+    ['Days left', String(Math.max(0, opts.daysLeft))],
+  ];
+  const text = `The ${what} for ${opts.label} ${when}.\n\n${rows.map(([k, v]) => `${k}: ${v}`).join('\n')}\n\n${opts.link}\n`;
+  const html = layout({
+    accent: opts.daysLeft <= 7 ? '#dc2626' : '#b45309',
+    label: opts.daysLeft <= 0 ? '✕ Expired' : '! Expiring soon',
+    heading: `The ${what} for ${opts.label} ${when}`,
+    rows,
+    link: opts.link,
+    footer: 'You are receiving this because you manage this agency in Northstar.',
   });
   return { subject, text, html };
 }

@@ -11,6 +11,7 @@ import { runCheck } from './checks/run.js';
 import { config } from './config.js';
 import { prisma } from './db.js';
 import { sendIncidentEmail } from './notify/email.js';
+import { ensureExpiryData, refreshAndWarn } from './expiry.js';
 import { recordOutcome } from './record.js';
 import { createRedis } from './redis.js';
 import { rollUpOldChecks } from './rollup.js';
@@ -40,6 +41,10 @@ const checkWorker = new Worker<CheckJob>(
     const outcome = await runCheck(monitor, { allowPrivate: config.ALLOW_PRIVATE_TARGETS });
     const { notify } = await recordOutcome(monitor.id, outcome);
     if (notify) await notifications.add(notify.kind, notify);
+    // A failed certificate or RDAP lookup must not fail the check that triggered it.
+    await ensureExpiryData(monitor).catch((err: Error) =>
+      console.error(`expiry data for ${monitor.id}: ${err.message}`),
+    );
   },
   { connection, concurrency: config.CHECK_CONCURRENCY },
 );
@@ -58,6 +63,10 @@ const maintenanceWorker = new Worker(
       const { hours, deleted } = await rollUpOldChecks();
       console.log(`rollup: ${deleted} checks folded into ${hours} hourly rows`);
     }
+    if (job.name === 'expiry') {
+      const { monitors, warned } = await refreshAndWarn();
+      console.log(`expiry: ${monitors} monitors refreshed, ${warned} warnings sent`);
+    }
   },
   { connection },
 );
@@ -66,6 +75,12 @@ await maintenance.upsertJobScheduler(
   'nightly-rollup',
   { pattern: '0 3 * * *', tz: 'UTC' },
   { name: 'rollup', opts: { removeOnComplete: true, removeOnFail: 50 } },
+);
+// Once a day: re-read certificates and domain registrations, send 30/15/7/1-day warnings.
+await maintenance.upsertJobScheduler(
+  'daily-expiry',
+  { pattern: '0 4 * * *', tz: 'UTC' },
+  { name: 'expiry', opts: { removeOnComplete: true, removeOnFail: 50 } },
 );
 
 for (const w of [checkWorker, notifyWorker, maintenanceWorker]) {
