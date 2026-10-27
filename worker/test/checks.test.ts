@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { checkHttp } from '../src/checks/http.js';
+import { checkHttp, checkKeyword } from '../src/checks/http.js';
 import { checkPing } from '../src/checks/ping.js';
 import { runCheck } from '../src/checks/run.js';
 
@@ -15,6 +15,8 @@ let flaky = 0;
 beforeAll(async () => {
   server = createServer((req, res) => {
     if (req.url === '/ok') return res.end('fine');
+    if (req.url === '/menu') return res.end('<h1>Today: sourdough and rye</h1>');
+    if (req.url === '/huge') return res.end('x'.repeat(3 * 1024 * 1024) + 'needle');
     if (req.url === '/error') return res.writeHead(503).end();
     if (req.url === '/slow') return setTimeout(() => res.end('late'), 2000);
     if (req.url === '/hop') return res.writeHead(302, { location: '/ok' }).end();
@@ -100,6 +102,30 @@ describe('runCheck', () => {
       { type: 'http', target: `${base}/error`, timeoutMs: 1000, retries: 1 },
       { allowPrivate: true, retryDelayMs: 10 },
     );
+    expect(outcome.status).toBe('down');
+  });
+});
+
+describe('checkKeyword', () => {
+  it('is up when the text is on the page', async () => {
+    const rule = { keyword: 'Sourdough', mode: 'present' as const, caseSensitive: false };
+    expect(await checkKeyword(`${base}/menu`, rule, allow)).toMatchObject({ status: 'up' });
+  });
+
+  it('is down when the text is missing', async () => {
+    const rule = { keyword: 'croissant', mode: 'present' as const, caseSensitive: false };
+    expect(await checkKeyword(`${base}/menu`, rule, allow)).toMatchObject({
+      status: 'down',
+      error: '"croissant" was not found on the page',
+    });
+  });
+
+  it('reads at most 2 MB of a page', async () => {
+    const rule = { keyword: 'needle', mode: 'present' as const, caseSensitive: true };
+    const outcome = await checkKeyword(`${base}/huge`, rule, {
+      timeoutMs: 3000,
+      allowPrivate: true,
+    });
     expect(outcome.status).toBe('down');
   });
 });

@@ -1,65 +1,62 @@
-import { guardedLookup, isPrivateAddress, SsrfError } from '@northstar/shared/net';
-import { isIP } from 'node:net';
-import { Agent, fetch } from 'undici';
+import { readLimited, RedirectError, safeFetch } from '@northstar/shared/fetch';
 import { describeError, down, type CheckOptions, type CheckOutcome } from './outcome.js';
-
-const MAX_REDIRECTS = 5;
-const USER_AGENT = 'NorthstarBot/1.0 (uptime monitoring)';
-
-// One connection pool per policy. The guarded lookup checks every address a socket is
-// about to connect to, including the targets of redirects.
-const agents = new Map<boolean, Agent>();
-function agentFor(allowPrivate: boolean) {
-  let agent = agents.get(allowPrivate);
-  if (!agent) {
-    agent = new Agent({ connect: { lookup: guardedLookup({ allowPrivate }) } });
-    agents.set(allowPrivate, agent);
-  }
-  return agent;
-}
-
-// DNS lookup is skipped for IP literals, so those are checked here instead.
-function assertLiteralIsPublic(url: URL, allowPrivate: boolean) {
-  const host = url.hostname.replace(/^\[|\]$/g, '');
-  if (!allowPrivate && isIP(host) && isPrivateAddress(host)) throw new SsrfError(host);
-}
 
 // Up means a 2xx or 3xx answer within the timeout, after following up to five redirects.
 export async function checkHttp(target: string, options: CheckOptions): Promise<CheckOutcome> {
-  const allowPrivate = options.allowPrivate ?? false;
   const signal = AbortSignal.timeout(options.timeoutMs);
   const started = performance.now();
-
   try {
-    let url = new URL(target);
-    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      assertLiteralIsPublic(url, allowPrivate);
-      const res = await fetch(url, {
-        redirect: 'manual',
-        signal,
-        dispatcher: agentFor(allowPrivate),
-        headers: { 'user-agent': USER_AGENT, accept: 'text/html,*/*' },
-      });
-      // Only the status matters; drop the body so the socket can be reused.
+    const { res } = await safeFetch(target, { signal, allowPrivate: options.allowPrivate });
+    // Only the status matters; drop the body so the socket can be reused.
+    await res.body?.cancel();
+    const responseMs = Math.round(performance.now() - started);
+    if (res.status >= 200 && res.status < 400) {
+      return { status: 'up', responseMs, statusCode: res.status, error: null };
+    }
+    return down(`The server answered ${res.status}`, { responseMs, statusCode: res.status });
+  } catch (err) {
+    if (err instanceof RedirectError) return down(err.message);
+    return down(describeError(err, options.timeoutMs));
+  }
+}
+
+// Pages larger than this are searched only in their first 2 MB.
+export const KEYWORD_MAX_BYTES = 2 * 1024 * 1024;
+
+export type KeywordRule = { keyword: string; mode: 'present' | 'absent'; caseSensitive: boolean };
+
+export function keywordProblem(body: string, rule: KeywordRule): string | null {
+  const haystack = rule.caseSensitive ? body : body.toLowerCase();
+  const needle = rule.caseSensitive ? rule.keyword : rule.keyword.toLowerCase();
+  const found = haystack.includes(needle);
+  if (rule.mode === 'present' && !found) return `"${rule.keyword}" was not found on the page`;
+  if (rule.mode === 'absent' && found) return `"${rule.keyword}" appeared on the page`;
+  return null;
+}
+
+// A page can answer 200 and still be broken: a CMS error, a parked domain, a maintenance
+// notice. Keyword monitors read the page and look for (or against) a piece of text.
+export async function checkKeyword(
+  target: string,
+  rule: KeywordRule,
+  options: CheckOptions,
+): Promise<CheckOutcome> {
+  const signal = AbortSignal.timeout(options.timeoutMs);
+  const started = performance.now();
+  try {
+    const { res } = await safeFetch(target, { signal, allowPrivate: options.allowPrivate });
+    if (res.status < 200 || res.status >= 400) {
       await res.body?.cancel();
-
-      const location = res.headers.get('location');
-      if (res.status >= 300 && res.status < 400 && location) {
-        url = new URL(location, url);
-        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-          return down(`Redirected to an unsupported address (${url.protocol})`);
-        }
-        continue;
-      }
-
       const responseMs = Math.round(performance.now() - started);
-      if (res.status >= 200 && res.status < 400) {
-        return { status: 'up', responseMs, statusCode: res.status, error: null };
-      }
       return down(`The server answered ${res.status}`, { responseMs, statusCode: res.status });
     }
-    return down(`More than ${MAX_REDIRECTS} redirects`);
+    const { text } = await readLimited(res, KEYWORD_MAX_BYTES);
+    const responseMs = Math.round(performance.now() - started);
+    const problem = keywordProblem(text, rule);
+    if (problem) return down(problem, { responseMs, statusCode: res.status });
+    return { status: 'up', responseMs, statusCode: res.status, error: null };
   } catch (err) {
+    if (err instanceof RedirectError) return down(err.message);
     return down(describeError(err, options.timeoutMs));
   }
 }
