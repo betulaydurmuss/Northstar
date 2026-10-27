@@ -5,6 +5,7 @@
   "description": "Uptime monitoring for agencies that answer to many clients.",
   "license": "MIT",
   "workspaces": [
+    "shared",
     "api",
     "worker",
     "web"
@@ -13,6 +14,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "postinstall": "npm run build -w shared",
     "dev": "concurrently -n api,worker,web -c magenta,cyan,blue \"npm run dev -w api\" \"npm run dev -w worker\" \"npm run dev -w web\"",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",

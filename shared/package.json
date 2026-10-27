@@ -1,0 +1,33 @@
+{
+  "name": "@northstar/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Code the api, worker and web must agree on: monitor rules, queue names and the SSRF guard.",
+  "exports": {
+    "./monitor": {
+      "types": "./dist/monitor.d.ts",
+      "default": "./dist/monitor.js"
+    },
+    "./queues": {
+      "types": "./dist/queues.d.ts",
+      "default": "./dist/queues.js"
+    },
+    "./net": {
+      "types": "./dist/net.d.ts",
+      "default": "./dist/net.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "vitest": "^3.2.0"
+  }
+}

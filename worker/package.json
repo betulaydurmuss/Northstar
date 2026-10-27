@@ -11,13 +11,17 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@northstar/shared": "*",
     "@prisma/client": "^6.9.0",
     "bullmq": "^5.53.0",
     "ioredis": "^5.6.1",
+    "nodemailer": "^10.2.1",
+    "undici": "^8.12.3",
     "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
+    "@types/nodemailer": "^8.0.2",
     "tsx": "^4.19.4",
     "vitest": "^3.2.0"
   }
