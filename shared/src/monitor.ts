@@ -3,7 +3,7 @@ import { z } from 'zod';
 // The rules for a monitor, shared by the api (which enforces them) and the web form
 // (which explains them before the request is sent). Browser-safe: no Node imports.
 
-export const MONITOR_TYPES = ['http', 'ping'] as const;
+export const MONITOR_TYPES = ['http', 'ping', 'keyword'] as const;
 export type MonitorType = (typeof MONITOR_TYPES)[number];
 
 export const LIMITS = {
@@ -57,10 +57,32 @@ const base = z.object({
     .min(LIMITS.timeoutMs.min, 'Allow at least one second')
     .max(LIMITS.timeoutMs.max, 'Allow at most 30 seconds'),
   retries: z.coerce.number().int().min(LIMITS.retries.min).max(LIMITS.retries.max),
+  // The client this site belongs to; null leaves it ungrouped.
+  clientId: z
+    .string()
+    .uuid()
+    .nullish()
+    .or(z.literal('').transform(() => null))
+    .transform((v) => v ?? null),
+  // Keyword monitors: fetch the page and require the text to be there (or not).
+  keyword: z
+    .string()
+    .trim()
+    .max(200)
+    .nullish()
+    .transform((v) => v || null),
+  keywordMode: z
+    .enum(['present', 'absent'])
+    .nullish()
+    .transform((v) => v ?? null),
+  keywordCaseSensitive: z.coerce.boolean().default(false),
 });
 
+// Which monitor types fetch a URL over HTTP.
+export const usesHttp = (type: MonitorType) => type === 'http' || type === 'keyword';
+
 function refineMonitor(m: z.infer<typeof base>, ctx: z.RefinementCtx) {
-  if (m.type === 'http' && !parseHttpTarget(m.target)) {
+  if (usesHttp(m.type) && !parseHttpTarget(m.target)) {
     ctx.addIssue({
       code: 'custom',
       path: ['target'],
@@ -74,6 +96,16 @@ function refineMonitor(m: z.infer<typeof base>, ctx: z.RefinementCtx) {
       message: 'Enter a host name, optionally with a port, such as example.com:443',
     });
   }
+  if (m.type === 'keyword' && !m.keyword) {
+    ctx.addIssue({ code: 'custom', path: ['keyword'], message: 'Enter the text to look for' });
+  }
+  if (m.type === 'keyword' && !m.keywordMode) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['keywordMode'],
+      message: 'Choose whether the text must be present or absent',
+    });
+  }
   if (m.timeoutMs >= m.intervalSec * 1000) {
     ctx.addIssue({
       code: 'custom',
@@ -83,8 +115,17 @@ function refineMonitor(m: z.infer<typeof base>, ctx: z.RefinementCtx) {
   }
 }
 
-export const monitorInput = base.superRefine(refineMonitor);
+// Keyword settings only mean something on keyword monitors; anything else stores none.
+export const monitorInput = base
+  .superRefine(refineMonitor)
+  .transform((m) =>
+    m.type === 'keyword'
+      ? m
+      : { ...m, keyword: null, keywordMode: null, keywordCaseSensitive: false },
+  );
 export type MonitorInput = z.infer<typeof monitorInput>;
+// What a form holds before validation: optional and nullable fields, unparsed numbers.
+export type MonitorFormValues = z.input<typeof monitorInput>;
 
 // Partial updates are checked against the stored monitor merged with the change.
 export const monitorPatch = base.partial();

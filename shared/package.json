@@ -16,6 +16,10 @@
     "./net": {
       "types": "./dist/net.d.ts",
       "default": "./dist/net.js"
+    },
+    "./fetch": {
+      "types": "./dist/fetch.d.ts",
+      "default": "./dist/fetch.js"
     }
   },
   "scripts": {
@@ -24,6 +28,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "undici": "^8.12.3",
     "zod": "^3.25.0"
   },
   "devDependencies": {
