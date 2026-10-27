@@ -1,0 +1,23 @@
+# Dependencies are restored from package-lock.json with `npm ci`.
+node_modules/
+
+# Build output is produced by `npm run build` and never edited by hand.
+dist/
+coverage/
+*.tsbuildinfo
+
+# Secrets live only in .env on each machine. .env.example documents every key.
+.env
+.env.*
+!.env.example
+
+# Uploaded client logos and generated SLA reports are runtime data, not source.
+api/storage/
+
+# Logs and editor droppings.
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
