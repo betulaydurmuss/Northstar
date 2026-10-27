@@ -8,6 +8,8 @@ import { defaultAuthLimits, type AuthLimits } from './auth/rate-limit.js';
 import { config } from './config.js';
 import { healthRouter } from './health.js';
 import { errorHandler, HttpError } from './http.js';
+import { monitorsRouter } from './monitors/router.js';
+import { bullScheduler, type CheckScheduler } from './monitors/scheduler.js';
 
 // Browsers only send a custom header cross-origin after a CORS preflight, which our
 // CORS policy refuses for any origin but our own. Requiring it on every state-changing
@@ -19,7 +21,7 @@ const csrfGuard: RequestHandler = (req, _res, next) => {
   next();
 };
 
-type AppOptions = { authLimits?: AuthLimits };
+type AppOptions = { authLimits?: AuthLimits; scheduler?: CheckScheduler };
 
 // Built separately from server.ts so tests can drive the app without opening a port.
 export function createApp(options: AppOptions = {}) {
@@ -35,6 +37,7 @@ export function createApp(options: AppOptions = {}) {
   app.use('/api/health', healthRouter);
   app.use('/api', csrfGuard);
   app.use('/api/auth', authRouter(options.authLimits ?? defaultAuthLimits));
+  app.use('/api/monitors', monitorsRouter(options.scheduler ?? bullScheduler(config.REDIS_URL)));
   app.use('/api/admin', adminRouter());
 
   app.use('/api', (_req, res) => {

@@ -21,6 +21,12 @@ const schema = z.object({
   // How many proxies sit in front of the api, so req.ip is the visitor and not the proxy.
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
 
+  // Development only: lets monitors point at servers on this machine or network.
+  ALLOW_PRIVATE_TARGETS: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+
   SMTP_HOST: z.string().default('localhost'),
   SMTP_PORT: z.coerce.number().int().positive().default(1025),
   MAIL_FROM: z.string().default('Northstar <alerts@northstar.local>'),
