@@ -33,7 +33,10 @@ for (const [net, prefix] of [
 for (const [net, prefix] of [
   ['::', 128], // unspecified
   ['::1', 128], // loopback
+  ['::', 96], // IPv4-compatible (deprecated), which embeds an IPv4 address
   ['64:ff9b::', 96], // NAT64, which can reach private IPv4 space
+  ['64:ff9b:1::', 48], // local-use NAT64
+  ['2002::', 16], // 6to4, which embeds an IPv4 address
   ['100::', 64], // discard
   ['2001:db8::', 32], // documentation
   ['fc00::', 7], // unique local

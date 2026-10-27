@@ -18,6 +18,9 @@ describe('isPrivateAddress', () => {
     '::ffff:127.0.0.1',
     '::ffff:7f00:1',
     '::ffff:a9fe:a9fe',
+    '2002:a00:1::1',
+    '64:ff9b:1::a00:1',
+    '::a00:1',
     'not-an-ip',
   ])('refuses %s', (ip) => {
     expect(isPrivateAddress(ip)).toBe(true);
